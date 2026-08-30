@@ -1,5 +1,14 @@
 SHELL_SOURCES := devseed install.sh lib/*.sh
-BATS := bats
+# Run bats under macOS /bin/bash 3.2 (matching CI, where no brew bash
+# exists): a `bash` shim dir is prepended to PATH so every bats subprocess
+# resolves `env bash` to the system 3.2 binary.
+BATS_SHIM := $(CURDIR)/.bats-bash-shim
+BATS := PATH="$(BATS_SHIM):$$PATH" bats
+
+$(BATS_SHIM)/bash:
+	@mkdir -p $(BATS_SHIM)
+	@printf '#!/bin/sh\nexec /bin/bash "$$@"\n' > $@
+	@chmod +x $@
 
 .PHONY: lint test integration greplint
 
@@ -20,8 +29,8 @@ greplint:
 	@! grep -nE 'realpath +(-m|--relative-to)' devseed install.sh lib/*.sh | grep -vE ':[0-9]+:[[:space:]]*#' || { echo 'greplint: GNU-only realpath flag'; exit 1; }
 	@! grep -nE '(^|[^_a-zA-Z])chezmoi($$|[^_a-zA-Z])' lib/*.sh | grep -vE '^lib/(dotfiles|bootstrap|doctor)\.sh:' | grep -vE ':[0-9]+:[[:space:]]*#' || { echo 'greplint: chezmoi referenced outside chezmoi_cmd()/bootstrap/doctor'; exit 1; }
 
-test:
+test: $(BATS_SHIM)/bash
 	$(BATS) --tap test/*.bats
 
-integration:
+integration: $(BATS_SHIM)/bash
 	$(BATS) --tap test/integration/*.bats

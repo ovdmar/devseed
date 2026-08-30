@@ -256,7 +256,8 @@ is_excluded() {
   DEVSEED_EXCLUDED_BY=""
   while IFS= read -r pat; do
     [ -n "$pat" ] || continue
-    p="${pat//\*\*/\*}"
+    # NB: no backslash on the replacement side — bash 3.2 keeps it literally
+    p="${pat//\*\*/*}"
     # shellcheck disable=SC2254
     case "$rel" in
       $p)
@@ -277,7 +278,7 @@ is_excluded() {
       \*\*/*)
         # "**/x" also matches a top-level "x"
         p="${pat#\*\*/}"
-        p="${p//\*\*/\*}"
+        p="${p//\*\*/*}"
         # shellcheck disable=SC2254
         case "$rel" in
           $p)
