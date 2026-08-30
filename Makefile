@@ -24,4 +24,4 @@ test:
 	$(BATS) --tap test/*.bats
 
 integration:
-	@echo "integration tests land in M1 (real brew/chezmoi in a temp env)"
+	$(BATS) --tap test/integration/*.bats

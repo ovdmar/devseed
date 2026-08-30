@@ -41,7 +41,7 @@ cmd_doctor() {
   fi
 
   local receipts
-  receipts="$(doctor_mas_receipt_count)"
+  receipts="$(mas_receipt_count)"
   if command -v mas >/dev/null 2>&1; then
     _doc_ok "mas: $(mas version 2>/dev/null || echo present) ($receipts App Store receipts)"
   elif [ "$receipts" -gt 0 ]; then
@@ -121,9 +121,4 @@ doctor_check_tsv() {
   else
     _doc_fail "$rel malformed (need ≥$min_cols tab-separated columns per row, no CR)"
   fi
-}
-
-# doctor_mas_receipt_count — count App Store receipts under /Applications.
-doctor_mas_receipt_count() {
-  find /Applications -maxdepth 4 -name receipt -path '*/_MASReceipt/*' 2>/dev/null | wc -l | tr -d ' '
 }

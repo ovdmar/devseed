@@ -231,3 +231,64 @@ $(tsv_rows "$file")
 EOF
   return 0
 }
+
+# ---------- misc helpers ----------
+
+utc_ts() { date -u '+%Y%m%dT%H%M%SZ'; }
+
+# mas_receipt_count — App Store receipts under /Applications (overridable
+# for tests via DEVSEED_APPLICATIONS_DIR).
+mas_receipt_count() {
+  find "${DEVSEED_APPLICATIONS_DIR:-/Applications}" -maxdepth 4 -name receipt \
+    -path '*/_MASReceipt/*' 2>/dev/null | wc -l | tr -d ' '
+}
+
+# ---------- exclusions ----------
+
+# is_excluded RELPATH — true when RELPATH (relative to DEVSEED_TARGET)
+# matches a pattern from exclusions.txt. On match, DEVSEED_EXCLUDED_BY holds
+# the matching pattern. Pattern semantics: shell globs where * and ** both
+# cross path separators; "dir/**" also matches "dir" itself; a leading "**/"
+# also matches at the top level.
+# shellcheck disable=SC2034 # DEVSEED_EXCLUDED_BY is read by callers
+is_excluded() {
+  local rel="$1" pat p
+  DEVSEED_EXCLUDED_BY=""
+  while IFS= read -r pat; do
+    [ -n "$pat" ] || continue
+    p="${pat//\*\*/\*}"
+    # shellcheck disable=SC2254
+    case "$rel" in
+      $p)
+        DEVSEED_EXCLUDED_BY="$pat"
+        return 0
+        ;;
+    esac
+    case "$pat" in
+      */\*\*)
+        # "dir/**" excludes the directory itself too
+        if [ "$rel" = "${pat%/\*\*}" ]; then
+          DEVSEED_EXCLUDED_BY="$pat"
+          return 0
+        fi
+        ;;
+    esac
+    case "$pat" in
+      \*\*/*)
+        # "**/x" also matches a top-level "x"
+        p="${pat#\*\*/}"
+        p="${p//\*\*/\*}"
+        # shellcheck disable=SC2254
+        case "$rel" in
+          $p)
+            DEVSEED_EXCLUDED_BY="$pat"
+            return 0
+            ;;
+        esac
+        ;;
+    esac
+  done <<EOF
+$(tsv_rows "$(config_dir)/exclusions.txt")
+EOF
+  return 1
+}

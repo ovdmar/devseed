@@ -15,7 +15,4 @@ resolve_profile() {
   fi
 }
 
-# write_chezmoi_config — generates the chezmoi config carrying [data] profile.
-write_chezmoi_config() {
-  die "write_chezmoi_config: not implemented yet (M1)" 2
-}
+# write_chezmoi_config lives in lib/dotfiles.sh next to chezmoi_cmd().

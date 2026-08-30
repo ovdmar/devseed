@@ -53,6 +53,8 @@ Usage: devseed <command> [flags]
 
 Commands:
   capture   Reconcile this machine's state into ~/.devseed/config
+            (--add PATH adopt a dotfile; --prune remove config-only entries;
+             --check alias for diff)
   diff      Report drift between machine and config (read-only)
   apply     Provision this machine from config
   export    Build a migration bundle from this machine
@@ -97,7 +99,10 @@ main() {
     doctor)
       cmd_doctor "$@"
       ;;
-    capture | diff | apply | export | restore | update)
+    capture)
+      cmd_capture "$@"
+      ;;
+    diff | apply | export | restore | update)
       die "devseed $cmd: not implemented yet (see vision.md milestones)" 2
       ;;
     *)

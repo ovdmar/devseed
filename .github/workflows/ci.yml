@@ -17,3 +17,5 @@ jobs:
         run: make lint
       - name: Test (macOS /bin/bash 3.2 compatibility enforced by shebang-free sourcing)
         run: make test
+      - name: Integration (real brew/defaults in a temp env)
+        run: make integration
