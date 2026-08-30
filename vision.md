@@ -98,3 +98,43 @@ Why: R1 wants zero prerequisites and an MDM-shippable payload. `chezmoi` ships a
 Alternatives considered:
 - An Ansible playbook (for example a fork of a public mac provisioning playbook) as the engine. Rejected as the entrypoint because Ansible needs a Python plus Ansible plus galaxy bootstrap.
 - A hybrid where our own entrypoint installs Python and Ansible and then runs a playbook. Technically satisfies R1 (the entrypoint owns the bootstrap), but rejected for v1 because: (a) it reintroduces the known fragility of bootstrapping on the macOS system Python (`_scproxy` code-signature failures after OS upgrades, pip self-upgrade breakage, ansible-galaxy pin drift); (b) Ansible only wins the package layer, which `brew bundle` already covers trivially; (c) dotfiles, secrets, migration, and capture still need chezmoi-or-equivalent plus bespoke code regardless, and capture does not fit Ansible's push-desired-state model; (d) a Python plus Ansible chain is a heavier, more failure-prone MDM payload than one static binary.
+
+### ADR-2. Bash orchestrator; chezmoi is the dotfiles engine only
+Decision: the `devseed` entrypoint and its `lib/` directly sequence bootstrap, `brew bundle`, dotfiles, macOS defaults, and curl-tools. chezmoi owns only the dotfiles layer (source dir, templating, apply/re-add/status); it does not run `run_once` scripts, and section 5.1's "run_once scripts that install CLT check, Homebrew, and apply the Brewfile" is superseded.
+Why: capture and diff must call `brew bundle dump`/`defaults read` regardless, so keeping apply in the same bash code paths gives one symmetric diff/capture/apply engine per layer. `run_once` semantics (run-once-per-content-hash, persistent chezmoi state) fight idempotent re-runs, `--dry-run`, and profile switching, and cannot be unit-tested without a full chezmoi harness. This still respects "do not hand-roll the engine": `brew bundle` and `chezmoi apply` do the heavy lifting; bash only sequences.
+
+### ADR-3. v1 migration bundles are unencrypted
+Decision: `devseed export` produces a plain tar.gz. R5's "encrypted transport by default" is deferred. Retained hygiene: the export runs under `umask 077`, the bundle is written mode 0600 into `~/.devseed/bundles/` by default, and bundle metadata records `encryption=none` so an encryption filter can slot in later without a format change.
+Why: v1 explicitly descopes secret-protection machinery. File modes and output location are correctness (ssh refuses group-readable keys), not machinery, so they stay.
+
+### ADR-4. Secret backends and reference mode are deferred
+Decision: the pluggable secret backends of R7/5.5 (`age`, `1password`, `vault`, `env`) and apply-time reference resolution are not in v1. Secrets are carried only by the port-once path: `devseed export --include-secrets` includes ssh/gpg keys and credential files in the (unencrypted, ADR-3) bundle; without the flag they are omitted. A short default exclusion list keeps obviously-secret paths out of captured config; it is user-editable and not otherwise enforced.
+Why: user decision to ship a working migration loop first. The bundle format and the `secret_ref`-shaped seam survive, so backends can be added without breaking config.
+
+### ADR-5. Editor extensions are captured only on explicit opt-in
+Decision: R3's "editor extensions" are supported via `brew bundle`'s `vscode` category, but the category is default-off in `brew.dump_categories` (alongside `go`/`npm`/`cargo`). Capture reports detected-but-off extensions as a note; apply skips a Brewfile `vscode` section with a reported skip (exit 3) when no owning editor is present.
+Why: extension entries are unsatisfiable unless the owning editor is itself declared in config, and drag-installed editors are a declared non-goal (see "Requirement status" — the author's own editor, Cursor, is the worked example: 20 extensions whose editor no layer installs). A default-on category would make fresh-machine convergence structurally impossible.
+
+### Annex A.6. macOS defaults allowlist
+The defaults layer is key-level, not domain dumps: `config/defaults/allowlist.tsv` declares `domain⇥key⇥type` rows; captured values live in `config/defaults/values.tsv` (sorted; absent keys recorded as the `<unset>` sentinel, which apply skips). Apply writes only on mismatch and restarts affected apps per `config/defaults/restart-map.tsv`. Capture refuses non-scalar types (`array`/`dict`/`data`) in v1. Rationale: whole-domain dumps are unreviewable and clobber unrelated keys; key-level TSVs give deterministic minimal diffs and idempotent apply.
+
+## 7. Requirement status (v1)
+
+Updated as each milestone lands; finalized at v0.1.0.
+
+| Req | Capability | Status | Rationale / notes |
+|---|---|---|---|
+| R1 | Zero-prereq entrypoint, MDM-runnable | Planned (M0/M3) | `install.sh` + `devseed apply` bootstrap CLT, Homebrew, chezmoi |
+| R2 | Idempotent; backup before overwrite; `--force` | Planned (M3) | backups + `devseed restore`; first-apply confirm gate |
+| R3 | brew formulae/casks | Planned (M1/M3) | `brew bundle` |
+| R3 | Mac App Store apps | Planned (M1/M3) | `mas` via brew bundle; receipt-census reconciliation guards completeness |
+| R3 | Editor extensions | Opt-in (ADR-5) | default-off `brew.dump_categories` category |
+| R3 | curl-installed tools | Planned (M1/M3) | declared + sha256-checksummed |
+| R3 | GUI apps (drag-installed) | Won't-do (v1) | suggest-only report in capture; not declaratively applied |
+| R3 | macOS defaults | Planned (M1/M3) | Annex A.6 |
+| R3 | Dotfiles | Planned (M1/M3) | chezmoi |
+| R4 | Profiles; company overlay; unattended mode | Planned (M3/M5) | overlay hooks gated by one-time registration |
+| R5 | Selective migration, per-category | Planned (M4) | `--only-categories`/`--except-categories` |
+| R5 | Encrypted transport by default | Deferred (ADR-3) | plain tar + hygiene; `encryption=none` seam |
+| R6 | Capture + drift check exiting non-zero | Planned (M1/M2) | realized as `devseed diff`; `capture --check` kept as alias; exit 1 drift / 3 unmeasurable |
+| R7 | Secrets never in config; references only | Partial (ADR-4) | exclusion list + flag-gated port-once; backends deferred |
