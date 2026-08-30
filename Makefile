@@ -6,6 +6,7 @@ BATS := bats
 lint: greplint
 	shellcheck --shell=bash $(SHELL_SOURCES) test/helpers/setup.bash
 	shfmt -d -i 2 -ci $(SHELL_SOURCES) test/helpers/setup.bash
+	@for f in $(SHELL_SOURCES); do /bin/bash -n $$f || exit 1; done # macOS bash 3.2 syntax
 
 # Project invariants that grep can enforce (see lib/common.sh header):
 #  1. lib/ never references the literal $$HOME (use DEVSEED_ROOT/DEVSEED_TARGET).
