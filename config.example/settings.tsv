@@ -1,0 +1,9 @@
+format.version	1
+# settings.tsv — devseed settings, tab-separated key/value rows.
+# format.version MUST stay the first row; its syntax never changes so any
+# engine version can read it and refuse cleanly (see vision.md).
+#
+# brew.dump_categories: extra `brew bundle dump` categories beyond
+# formulae/casks/taps/mas. Comma-separated from: vscode,go,npm,cargo.
+# Absent/commented = all off (see vision.md ADR-5 for why vscode is opt-in).
+# To enable, add a row like:  brew.dump_categories<TAB>vscode

@@ -1,0 +1,2 @@
+# Profile "work" — Brewfile fragment applied after the base Brewfile.
+# brew "awscli"

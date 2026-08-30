@@ -1,0 +1,8 @@
+# Brewfile — the declared package state (brew bundle format).
+# Kept canonical by devseed: sectioned (tap/brew/cask/mas) and sorted.
+# `devseed capture` merges this machine's installed state in; `devseed apply`
+# converges the machine to it. This example is a minimal starter — capture
+# will replace it with your real state.
+
+brew "git"
+brew "jq"

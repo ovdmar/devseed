@@ -1,0 +1,21 @@
+#!/bin/bash
+# profiles.sh — profile resolution and per-profile chezmoi config.
+# Full profile application (Brewfile fragments, defaults overrides) lands in M3.
+
+# resolve_profile — flag > DEVSEED_PROFILE env > persisted state > default.
+resolve_profile() {
+  if [ -n "${DEVSEED_PROFILE_FLAG:-}" ]; then
+    echo "$DEVSEED_PROFILE_FLAG"
+  elif [ -n "${DEVSEED_PROFILE:-}" ]; then
+    echo "$DEVSEED_PROFILE"
+  elif [ -f "$(state_dir)/profile" ]; then
+    cat "$(state_dir)/profile"
+  else
+    echo "default"
+  fi
+}
+
+# write_chezmoi_config — generates the chezmoi config carrying [data] profile.
+write_chezmoi_config() {
+  die "write_chezmoi_config: not implemented yet (M1)" 2
+}

@@ -1,0 +1,6 @@
+# dotfiles.list — globs (relative to $HOME) for the "dotfiles" export
+# category. Exclusions.txt always wins over these lists.
+.zshrc
+.zprofile
+.gitconfig
+.config/git/**

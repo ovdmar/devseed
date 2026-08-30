@@ -1,0 +1,4 @@
+# app-settings.list — curated ~/Library/Preferences plists worth migrating.
+# Opt lines in by uncommenting; exclusions.txt always wins.
+# Library/Preferences/com.googlecode.iterm2.plist
+# Library/Preferences/com.generalarcade.flycut.plist
