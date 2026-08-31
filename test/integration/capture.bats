@@ -93,6 +93,30 @@ teardown() { common_teardown; }
   defaults delete com.devseed.citest testkey || true
 }
 
+@test "export from home A, apply --from into home B: tree and modes survive" {
+  home_a="$BATS_TEST_TMPDIR/home-a"
+  home_b="$BATS_TEST_TMPDIR/home-b"
+  mkdir -p "$home_a/.config/git" "$home_b"
+  echo "zshrc-content" >"$home_a/.zshrc"
+  echo "git-config" >"$home_a/.config/git/config"
+  chmod 640 "$home_a/.zshrc"
+
+  cp -R "$REPO_DIR/config.example" "$DEVSEED_ROOT/config"
+  printf '.zshrc\n.config/git/**\n' >"$DEVSEED_ROOT/config/export/categories/dotfiles.list"
+  printf 'brew "git"\n' >"$DEVSEED_ROOT/config/Brewfile"
+  : >"$DEVSEED_ROOT/config/curl-tools.tsv"
+  printf '# empty\n' >"$DEVSEED_ROOT/config/defaults/allowlist.tsv"
+
+  DEVSEED_TARGET="$home_a" run "$REPO_DIR/devseed" export --output "$BATS_TEST_TMPDIR/mig.tar.gz"
+  [ "$status" -eq 0 ]
+
+  DEVSEED_TARGET="$home_b" run "$REPO_DIR/devseed" apply --from "$BATS_TEST_TMPDIR/mig.tar.gz" --only defaults --unattended
+  [ "$status" -eq 0 ]
+  [ "$(cat "$home_b/.zshrc")" = "zshrc-content" ]
+  [ "$(cat "$home_b/.config/git/config")" = "git-config" ]
+  [ "$(stat -f '%Lp' "$home_b/.zshrc")" = "640" ]
+}
+
 @test "real dump is unsorted, proving brewfile_normalize is load-bearing" {
   source_libs
   raw="$(env HOMEBREW_NO_AUTO_UPDATE=1 brew bundle dump --file=- --formula 2>/dev/null | grep '^brew "' || true)"

@@ -59,6 +59,8 @@ Commands:
             drift, 3 when a layer could not be measured)
   apply     Provision this machine from config
   export    Build a migration bundle from this machine
+            (--include-secrets; --only-categories/--except-categories CATS;
+             --output PATH; bundles are plain tar, 0600, in ~/.devseed/bundles)
   restore   Restore files from a devseed backup
   update    Update the installed engine to the latest release
   doctor    Report environment and config health
@@ -112,7 +114,10 @@ main() {
     restore)
       cmd_restore "$@"
       ;;
-    export | update)
+    export)
+      cmd_export "$@"
+      ;;
+    update)
       die "devseed $cmd: not implemented yet (see vision.md milestones)" 2
       ;;
     *)

@@ -5,12 +5,26 @@
 # was skipped or refused.
 
 cmd_apply() {
-  local worst=0 st layers=0 layer
+  local worst=0 st layers=0 layer from=""
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --from)
-        die "apply --from BUNDLE: not implemented yet (M4)" 2
+        [ "$#" -ge 2 ] || die "--from requires a bundle path" 2
+        from="$2"
+        shift 2
+        ;;
+      --only-categories)
+        [ "$#" -ge 2 ] || die "--only-categories requires a value" 2
+        # shellcheck disable=SC2034 # read by category_selected (lib/export.sh)
+        DEVSEED_ONLY_CATS="$2"
+        shift 2
+        ;;
+      --except-categories)
+        [ "$#" -ge 2 ] || die "--except-categories requires a value" 2
+        # shellcheck disable=SC2034 # read by category_selected (lib/export.sh)
+        DEVSEED_EXCEPT_CATS="$2"
+        shift 2
         ;;
       *)
         die "apply: unknown argument: $1" 2
@@ -42,6 +56,14 @@ cmd_apply() {
     esac
     [ "$st" -gt "$worst" ] && worst=$st
   done
+
+  # Migration bundle merges AFTER the declarative layers (config outranks
+  # carried state; chezmoi-managed targets are skipped inside the merge).
+  if [ -n "$from" ]; then
+    st=0
+    merge_bundle "$from" || st=$?
+    [ "$st" -gt "$worst" ] && worst=$st
+  fi
 
   if [ "${DEVSEED_DRY_RUN:-0}" != "1" ] && [ "$worst" -eq 0 ]; then
     mkdir -p "$(state_dir)"

@@ -148,8 +148,8 @@ esac'
   ! grep -q "bundle --no-upgrade" "$STUB_LOG"
 }
 
-@test "apply --from points at M4" {
-  run_devseed apply --from /tmp/bundle.tar.gz
+@test "apply --from with a missing bundle exits 2" {
+  run_devseed apply --from "$BATS_TEST_TMPDIR/nonexistent.tar.gz"
   [ "$status" -eq 2 ]
-  [[ "$output" == *"M4"* ]]
+  [[ "$output" == *"no such bundle"* ]]
 }
