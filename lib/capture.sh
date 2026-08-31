@@ -29,7 +29,7 @@ snapshot_config() {
   run_cmd mkdir -p "$(backups_dir)/$ts"
   run_cmd cp -R "$DEVSEED_ROOT/config" "$dest"
   if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
-    (cd "$dest" && find . -type f | LC_ALL=C sort) >"$(backups_dir)/$ts/manifest.txt"
+    (cd "$(backups_dir)/$ts" && find config -type f | LC_ALL=C sort) >"$(backups_dir)/$ts/manifest.txt"
   fi
   log "config snapshot: $dest"
 }

@@ -24,6 +24,15 @@ common_setup() {
   _ORIG_PATH="$PATH"
   PATH="$STUB_DIR:/usr/bin:/bin"
   export PATH
+  # Second belt: even code probing absolute brew prefixes cannot find the
+  # real Homebrew from a unit test.
+  DEVSEED_BREW_PREFIXES="$BATS_TEST_TMPDIR/no-brew-prefix"
+  export DEVSEED_BREW_PREFIXES
+  # Guard stubs: dangerous system tools fail loudly unless a test stubs
+  # them deliberately (curl would download for real; killall kills real
+  # apps — both live in /usr/bin, inside the restricted PATH).
+  make_stub curl 'echo "test-guard: unstubbed curl invoked" >&2; exit 86'
+  make_stub killall 'echo "test-guard: unstubbed killall invoked" >&2; exit 86'
   _chezmoi_state_snapshot="$(_real_chezmoi_mtimes)"
 }
 

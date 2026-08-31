@@ -30,7 +30,7 @@ teardown() { common_teardown; }
 }
 
 @test "unimplemented commands exit 2 with a milestone note" {
-  for cmd in apply export restore update; do
+  for cmd in export update; do
     run_devseed "$cmd"
     [ "$status" -eq 2 ]
     [[ "$output" == *"not implemented yet"* ]]

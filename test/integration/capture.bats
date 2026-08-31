@@ -63,6 +63,36 @@ teardown() { common_teardown; }
   [[ "$output" == *"missing-in-config"* ]]
 }
 
+@test "CI-only: real apply converges an empty target, re-apply is a no-op" {
+  [ "${CI:-}" = "true" ] || skip "CI-only: installs a real formula and writes a throwaway defaults domain"
+  mkdir -p "$DEVSEED_ROOT/config/defaults" "$DEVSEED_ROOT/config/chezmoi" \
+    "$DEVSEED_ROOT/config/profiles/default"
+  cp "$REPO_DIR/config.example/settings.tsv" "$DEVSEED_ROOT/config/settings.tsv"
+  cp "$REPO_DIR/config.example/exclusions.txt" "$DEVSEED_ROOT/config/exclusions.txt"
+  printf 'brew "hello"\n' >"$DEVSEED_ROOT/config/Brewfile"
+  printf 'hello from devseed\n' >"$DEVSEED_ROOT/config/chezmoi/dot_devseed_testfile"
+  printf 'com.devseed.citest\ttestkey\tint\n' >"$DEVSEED_ROOT/config/defaults/allowlist.tsv"
+  printf 'com.devseed.citest\ttestkey\tint\t42\n' >"$DEVSEED_ROOT/config/defaults/values.tsv"
+  printf 'com.devseed.citest\t-\n' >"$DEVSEED_ROOT/config/defaults/restart-map.tsv"
+  : >"$DEVSEED_ROOT/config/curl-tools.tsv"
+
+  run_devseed apply --force --unattended
+  [ "$status" -eq 0 ]
+  [ "$(cat "$DEVSEED_TARGET/.devseed_testfile")" = "hello from devseed" ]
+  [ "$(defaults read com.devseed.citest testkey)" = "42" ]
+  env HOMEBREW_NO_AUTO_UPDATE=1 brew bundle check --file="$DEVSEED_ROOT/config/Brewfile"
+
+  run_devseed apply --unattended
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already satisfied"* ]]
+  [[ "$output" == *"already converged"* ]]
+
+  run_devseed diff --only dotfiles,defaults,curl-tools
+  [ "$status" -eq 0 ]
+
+  defaults delete com.devseed.citest testkey || true
+}
+
 @test "real dump is unsorted, proving brewfile_normalize is load-bearing" {
   source_libs
   raw="$(env HOMEBREW_NO_AUTO_UPDATE=1 brew bundle dump --file=- --formula 2>/dev/null | grep '^brew "' || true)"

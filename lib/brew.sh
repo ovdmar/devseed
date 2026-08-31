@@ -6,7 +6,62 @@
 
 BREW_SECTIONS="tap brew cask mas vscode"
 
-apply_brew() { die "apply_brew: not implemented yet (M3)" 2; }
+# vscode_editor_ok — apply-side guard: an extensions dir AND a fork CLI on
+# PATH (a stale leftover dir alone does not pass).
+vscode_editor_ok() {
+  local cli
+  vscode_editor_present || return 1
+  for cli in code cursor code-insiders codium windsurf positron; do
+    command -v "$cli" >/dev/null 2>&1 && return 0
+  done
+  return 1
+}
+
+# apply_brewfile FILE — `brew bundle check` fast path, else install
+# (--no-upgrade: upgrades stay a human action). Filters out the vscode
+# section (reported skip, exit-3 contribution) when no editor is present.
+apply_brewfile() {
+  local file="$1" st=0 use
+  use="$file"
+  if grep -q '^vscode "' "$file" 2>/dev/null && ! vscode_editor_ok; then
+    log "brew: skipping vscode section of $file (no editor with an extensions dir + CLI present)"
+    DEVSEED_N_SKIPPED=$((DEVSEED_N_SKIPPED + 1))
+    st=3
+    use="$(mktemp)"
+    grep -v '^vscode "' "$file" >"$use"
+  fi
+  if env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 \
+    brew bundle check --file="$use" >/dev/null 2>&1; then
+    log "brew: $file already satisfied"
+  else
+    run_cmd env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 \
+      HOMEBREW_NO_INSTALL_CLEANUP=1 brew bundle --no-upgrade --file="$use" ||
+      die "brew bundle failed for $file" 2
+  fi
+  [ "$use" = "$file" ] || rm -f "$use"
+  return "$st"
+}
+
+# apply_brew — base Brewfile then the active profile's fragment.
+apply_brew() {
+  local st=0 s profile_frag
+  if ! command -v brew >/dev/null 2>&1; then
+    log "brew: skipped: Homebrew not installed"
+    DEVSEED_N_SKIPPED=$((DEVSEED_N_SKIPPED + 1))
+    return 3
+  fi
+  if grep -q '^mas "' "$(config_dir)/Brewfile" 2>/dev/null; then
+    ensure_mas || true
+  fi
+  apply_brewfile "$(config_dir)/Brewfile" || st=$?
+  profile_frag="$(config_dir)/profiles/$(resolve_profile)/Brewfile"
+  if [ -f "$profile_frag" ] && brewfile_entries "$profile_frag" | grep -q .; then
+    s=0
+    apply_brewfile "$profile_frag" || s=$?
+    [ "$s" -gt "$st" ] && st=$s
+  fi
+  return "$st"
+}
 
 # brew_dump_normalized OUTFILE — normalized `brew bundle dump` honoring the
 # configured extra categories. Read-only.

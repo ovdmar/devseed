@@ -106,7 +106,13 @@ main() {
     diff)
       cmd_diff "$@"
       ;;
-    apply | export | restore | update)
+    apply)
+      cmd_apply "$@"
+      ;;
+    restore)
+      cmd_restore "$@"
+      ;;
+    export | update)
       die "devseed $cmd: not implemented yet (see vision.md milestones)" 2
       ;;
     *)

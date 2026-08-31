@@ -3,7 +3,21 @@
 # diff lands in M2, full apply in M3; install_curl_tool is used by
 # ensure_chezmoi (M1) already.
 
-apply_curl_tools() { die "apply_curl_tools: not implemented yet (M3)" 2; }
+# apply_curl_tools — install declared tools (this arch) that are missing.
+apply_curl_tools() {
+  local arch name dest
+  arch="$(uname -m)"
+  while IFS="$(printf '\t')" read -r name _v _a _u _s _t _p dest; do
+    [ -n "$name" ] || continue
+    if command -v "$name" >/dev/null 2>&1 || [ -x "$DEVSEED_ROOT/bin/$name" ]; then
+      continue
+    fi
+    install_curl_tool "$name" "$(target_path "${dest:-.local/bin}")"
+  done <<EOF
+$(tsv_rows "$(config_dir)/curl-tools.tsv" | awk -F '\t' -v a="$arch" '$3 == a')
+EOF
+  return 0
+}
 
 # diff_curl_tools — declared tools (this arch) present on the machine?
 # Read-only; presence = on PATH or in $DEVSEED_ROOT/bin.

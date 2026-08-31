@@ -5,7 +5,48 @@
 # key); booleans normalized to true/false; absent keys recorded as <unset>
 # (apply skips them).
 
-apply_defaults() { die "apply_defaults: not implemented yet (M3)" 2; }
+# apply_defaults — typed compare, write only on mismatch, <unset> skipped,
+# app restarts per restart-map for touched domains.
+apply_defaults() {
+  local values domain key dtype want actual have flag touched="" app
+  values="$(config_dir)/defaults/values.tsv"
+  [ -f "$values" ] || return 0
+  while IFS="$(printf '\t')" read -r domain key dtype want; do
+    [ -n "$domain" ] || continue
+    [ "$want" = "<unset>" ] && continue
+    have=""
+    if actual="$(defaults read-type "$domain" "$key" 2>/dev/null)"; then
+      actual="${actual#Type is }"
+      have="$(defaults read "$domain" "$key" 2>/dev/null || true)"
+      if [ "$dtype" = "bool" ] || [ "$actual" = "boolean" ]; then
+        have="$(defaults_normalize_bool "$have")"
+      fi
+    fi
+    [ "$have" = "$want" ] && continue
+    case "$dtype" in
+      bool) flag="-bool" ;;
+      int) flag="-int" ;;
+      float) flag="-float" ;;
+      *) flag="-string" ;;
+    esac
+    run_cmd defaults write "$domain" "$key" "$flag" "$want"
+    case " $touched " in
+      *" $domain "*) ;;
+      *) touched="$touched $domain" ;;
+    esac
+  done <<EOF
+$(tsv_rows "$values")
+EOF
+
+  for domain in $touched; do
+    app="$(tsv_rows "$(config_dir)/defaults/restart-map.tsv" |
+      awk -F '\t' -v d="$domain" '$1 == d { print $2; exit }')"
+    if [ -n "$app" ] && [ "$app" != "-" ]; then
+      run_cmd killall "$app" || true
+    fi
+  done
+  return 0
+}
 
 # diff_defaults — compare values.tsv against the machine, read-only.
 # Drift kinds: differs / unset-on-machine / unset-in-config /

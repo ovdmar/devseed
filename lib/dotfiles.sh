@@ -6,7 +6,56 @@
 # persistent state + cache under $DEVSEED_ROOT/state/chezmoi/ so nothing
 # ever touches the real ~/.config/chezmoi or ~/.local/share/chezmoi.
 
-apply_dotfiles() { die "apply_dotfiles: not implemented yet (M3)" 2; }
+# apply_dotfiles — backup-then-apply with the first-apply gate (R2):
+# differing live files are copied to backups/<ts>/target/ before chezmoi
+# apply; the machine's FIRST apply over differing files needs --force or an
+# interactive confirm (unattended without --force skips the layer, exit 3).
+apply_dotfiles() {
+  local status_out line rel ts bdir backed=0
+  if ! chezmoi_bin >/dev/null 2>&1; then
+    log "dotfiles: skipped: chezmoi not installed"
+    DEVSEED_N_SKIPPED=$((DEVSEED_N_SKIPPED + 1))
+    return 3
+  fi
+  status_out="$(chezmoi_cmd status 2>/dev/null || true)"
+  if [ -z "$status_out" ]; then
+    log "dotfiles: already converged"
+    return 0
+  fi
+
+  if [ ! -f "$(state_dir)/applied" ] && [ "${DEVSEED_FORCE:-0}" != "1" ]; then
+    if ! confirm "first devseed apply would change existing dotfiles (backed up first) — continue?"; then
+      log "dotfiles: skipped: first apply over existing files needs --force (or interactive confirm)"
+      DEVSEED_N_SKIPPED=$((DEVSEED_N_SKIPPED + 1))
+      return 3
+    fi
+  fi
+
+  ts="$(utc_ts)"
+  bdir="$(backups_dir)/$ts"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    rel="${line#??}"
+    rel="${rel# }"
+    [ -f "$(target_path "$rel")" ] || continue
+    run_cmd mkdir -p "$bdir/target/$(dirname "$rel")"
+    run_cmd cp -p "$(target_path "$rel")" "$bdir/target/$rel"
+    if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
+      printf 'target/%s\n' "$rel" >>"$bdir/manifest.txt"
+    fi
+    backed=$((backed + 1))
+  done <<EOF
+$status_out
+EOF
+  [ "$backed" -gt 0 ] && log "dotfiles: backed up $backed file(s) to $bdir (devseed restore $ts)"
+
+  run_cmd chezmoi_cmd apply
+  if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
+    mkdir -p "$(state_dir)"
+    touch "$(state_dir)/applied"
+  fi
+  return 0
+}
 
 # diff_dotfiles — strictly non-mutating: never installs chezmoi. Drift comes
 # from PARSED `chezmoi status` lines — its exit code is always 0 and must
