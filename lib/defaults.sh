@@ -5,8 +5,54 @@
 # key); booleans normalized to true/false; absent keys recorded as <unset>
 # (apply skips them).
 
-diff_defaults() { die "diff_defaults: not implemented yet (M2)" 2; }
 apply_defaults() { die "apply_defaults: not implemented yet (M3)" 2; }
+
+# diff_defaults — compare values.tsv against the machine, read-only.
+# Drift kinds: differs / unset-on-machine / unset-in-config /
+# non-scalar-on-machine (reported, never a hard death in diff).
+diff_defaults() {
+  local st=0 values domain key dtype want actual have
+  values="$(config_dir)/defaults/values.tsv"
+  if [ ! -f "$values" ]; then
+    return 0
+  fi
+  while IFS="$(printf '\t')" read -r domain key dtype want; do
+    [ -n "$domain" ] || continue
+    if ! actual="$(defaults read-type "$domain" "$key" 2>/dev/null)"; then
+      if [ "$want" != "<unset>" ]; then
+        log "defaults: unset-on-machine: $domain $key (config=$want)"
+        DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
+        st=1
+      fi
+      continue
+    fi
+    actual="${actual#Type is }"
+    case "$actual" in
+      array | dictionary | data)
+        log "defaults: non-scalar-on-machine: $domain $key ($actual; remove from allowlist.tsv)"
+        DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
+        st=1
+        continue
+        ;;
+    esac
+    have="$(defaults read "$domain" "$key")"
+    if [ "$dtype" = "bool" ] || [ "$actual" = "boolean" ]; then
+      have="$(defaults_normalize_bool "$have")"
+    fi
+    if [ "$want" = "<unset>" ]; then
+      log "defaults: unset-in-config: $domain $key (machine=$have)"
+      DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
+      st=1
+    elif [ "$have" != "$want" ]; then
+      log "defaults: differs: $domain $key (config=$want machine=$have)"
+      DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
+      st=1
+    fi
+  done <<EOF
+$(tsv_rows "$values")
+EOF
+  return "$st"
+}
 
 # defaults_normalize_bool VALUE — canonical true/false.
 defaults_normalize_bool() {

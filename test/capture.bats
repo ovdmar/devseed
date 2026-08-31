@@ -32,10 +32,11 @@ teardown() { common_teardown; }
   grep -q '<unset>' "$DEVSEED_ROOT/config/defaults/values.tsv"
 }
 
-@test "capture --check points at diff (M2), exit 2" {
-  run_devseed capture --check
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"devseed diff"* ]]
+@test "capture --check is a diff alias (clean stubs -> exit 0, no config created)" {
+  run_devseed capture --check --only defaults
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"no drift"* ]]
+  [ ! -d "$DEVSEED_ROOT/config" ] # --check never bootstraps config
 }
 
 @test "capture --dry-run writes nothing" {

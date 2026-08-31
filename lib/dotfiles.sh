@@ -6,8 +6,31 @@
 # persistent state + cache under $DEVSEED_ROOT/state/chezmoi/ so nothing
 # ever touches the real ~/.config/chezmoi or ~/.local/share/chezmoi.
 
-diff_dotfiles() { die "diff_dotfiles: not implemented yet (M2)" 2; }
 apply_dotfiles() { die "apply_dotfiles: not implemented yet (M3)" 2; }
+
+# diff_dotfiles — strictly non-mutating: never installs chezmoi. Drift comes
+# from PARSED `chezmoi status` lines — its exit code is always 0 and must
+# never be used as the drift signal.
+diff_dotfiles() {
+  local status_out line
+  if ! chezmoi_bin >/dev/null 2>&1; then
+    log "dotfiles: unmeasurable: chezmoi not installed"
+    DEVSEED_N_UNMEASURABLE=$((DEVSEED_N_UNMEASURABLE + 1))
+    return 3
+  fi
+  status_out="$(chezmoi_cmd status 2>/dev/null || true)"
+  if [ -z "$status_out" ]; then
+    return 0
+  fi
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    log "dotfiles: differs: $line"
+    DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
+  done <<EOF
+$status_out
+EOF
+  return 1
+}
 
 # chezmoi_bin — PATH chezmoi, else devseed's own curl-installed copy.
 chezmoi_bin() {

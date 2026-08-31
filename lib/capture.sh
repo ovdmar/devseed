@@ -80,7 +80,8 @@ cmd_capture() {
   done
 
   if [ "$check" = "1" ]; then
-    die "capture --check is 'devseed diff': not implemented yet (M2)" 2
+    cmd_diff
+    return $?
   fi
 
   DEVSEED_PRUNE="$prune"

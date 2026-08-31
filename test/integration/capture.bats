@@ -33,6 +33,36 @@ teardown() { common_teardown; }
   [ "$(cat "$DEVSEED_ROOT/config/defaults/values.tsv")" = "$values_before" ]
 }
 
+@test "real diff after real capture+prune: clean, then both drift directions via config edits" {
+  run_devseed capture --only brew,defaults
+  [ "$status" -eq 0 ]
+  # The example seed may declare packages this machine lacks (e.g. jq);
+  # union capture keeps them, so prune to the machine's truth first —
+  # exactly the real first-capture workflow.
+  git -C "$DEVSEED_ROOT/config" init -q
+  git -C "$DEVSEED_ROOT/config" add -A
+  git -C "$DEVSEED_ROOT/config" -c user.email=t@t -c user.name=t commit -qm seed
+  run_devseed capture --prune --only brew
+  [ "$status" -eq 0 ]
+  run_devseed diff --only brew,defaults
+  [ "$status" -eq 0 ]
+
+  # subtractive direction: config declares something the machine lacks
+  echo 'brew "devseed-integration-bogus-formula"' >>"$DEVSEED_ROOT/config/Brewfile"
+  run_devseed diff --only brew
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'missing-on-machine: brew "devseed-integration-bogus-formula"'* ]]
+
+  # additive direction: machine has something the config lost
+  grep -v '^tap "' "$DEVSEED_ROOT/config/Brewfile" | grep -v 'bogus' >"$DEVSEED_ROOT/config/Brewfile.tmp" || true
+  head -n 1 "$DEVSEED_ROOT/config/Brewfile.tmp" >"$DEVSEED_ROOT/config/Brewfile.cut" || true
+  mv "$DEVSEED_ROOT/config/Brewfile.cut" "$DEVSEED_ROOT/config/Brewfile"
+  rm -f "$DEVSEED_ROOT/config/Brewfile.tmp"
+  run_devseed diff --only brew
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"missing-in-config"* ]]
+}
+
 @test "real dump is unsorted, proving brewfile_normalize is load-bearing" {
   source_libs
   raw="$(env HOMEBREW_NO_AUTO_UPDATE=1 brew bundle dump --file=- --formula 2>/dev/null | grep '^brew "' || true)"

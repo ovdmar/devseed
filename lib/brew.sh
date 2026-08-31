@@ -6,8 +6,79 @@
 
 BREW_SECTIONS="tap brew cask mas vscode"
 
-diff_brew() { die "diff_brew: not implemented yet (M2)" 2; }
 apply_brew() { die "apply_brew: not implemented yet (M3)" 2; }
+
+# brew_dump_normalized OUTFILE — normalized `brew bundle dump` honoring the
+# configured extra categories. Read-only.
+brew_dump_normalized() {
+  local outf="$1" categories c dump_flags dump
+  dump_flags="--formula --cask --tap --mas"
+  categories="$(setting_get brew.dump_categories)"
+  for c in $(printf '%s' "$categories" | tr ',' ' '); do
+    case "$c" in
+      vscode | go | npm | cargo) dump_flags="$dump_flags --$c" ;;
+    esac
+  done
+  # shellcheck disable=SC2086
+  dump="$(env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 \
+    HOMEBREW_NO_INSTALL_CLEANUP=1 brew bundle dump --file=- $dump_flags 2>/dev/null)" ||
+    die "brew bundle dump failed" 2
+  printf '%s\n' "$dump" | brewfile_normalize >"$outf"
+}
+
+# diff_brew — strictly non-mutating drift report. Sets exit contribution via
+# return: 0 clean, 1 drift, 3 unmeasurable/incomplete.
+diff_brew() {
+  local st=0 receipts dumped_tmp line key mas_lines
+
+  if ! command -v brew >/dev/null 2>&1; then
+    log "brew: unmeasurable: Homebrew not installed"
+    DEVSEED_N_UNMEASURABLE=$((DEVSEED_N_UNMEASURABLE + 1))
+    return 3
+  fi
+  receipts="$(mas_receipt_count)"
+  if [ "$receipts" -gt 0 ] && ! command -v mas >/dev/null 2>&1; then
+    log "brew: unmeasurable: $receipts App Store apps, mas not installed"
+    DEVSEED_N_UNMEASURABLE=$((DEVSEED_N_UNMEASURABLE + 1))
+    st=3
+  fi
+
+  dumped_tmp="$(mktemp)"
+  brew_dump_normalized "$dumped_tmp"
+
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    key="$(brewfile_key "$line")"
+    if ! grep -qF "$key" "$dumped_tmp"; then
+      log "brew: missing-on-machine: $key"
+      DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
+      [ "$st" -eq 0 ] && st=1
+    fi
+  done <<EOF
+$(brewfile_entries "$(config_dir)/Brewfile")
+EOF
+
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    key="$(brewfile_key "$line")"
+    if ! brewfile_entries "$(config_dir)/Brewfile" | grep -qF "$key"; then
+      log "brew: missing-in-config: $key"
+      DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
+      [ "$st" -eq 0 ] && st=1
+    fi
+  done <"$dumped_tmp"
+
+  if command -v mas >/dev/null 2>&1; then
+    mas_lines="$(grep -c '^mas "' "$dumped_tmp" || true)"
+    if [ "${mas_lines:-0}" -lt "$receipts" ]; then
+      log "brew: incomplete: $receipts App Store receipts, $mas_lines mas entries"
+      DEVSEED_N_INCOMPLETE=$((DEVSEED_N_INCOMPLETE + 1))
+      st=3
+    fi
+  fi
+  rm -f "$dumped_tmp"
+  return "$st"
+}
 
 # brewfile_normalize — stdin to stdout: entry lines only, sectioned in
 # BREW_SECTIONS order, each section LC_ALL=C sorted and de-duplicated.
@@ -108,8 +179,7 @@ vscode_editor_present() {
 # committed Brewfile, post-dump receipt reconciliation. Returns 0 ok, 3 when
 # the layer is unmeasurable or incomplete (counted in DEVSEED_N_*).
 capture_brew() {
-  local st=0 receipts categories c dump_flags dump dumped_tmp merged_tmp
-  local brewfile mas_lines
+  local st=0 receipts categories dumped_tmp merged_tmp brewfile mas_lines
 
   if ! command -v brew >/dev/null 2>&1; then
     log "brew: unmeasurable: Homebrew not installed"
@@ -127,14 +197,7 @@ capture_brew() {
     st=3
   fi
 
-  dump_flags="--formula --cask --tap --mas"
   categories="$(setting_get brew.dump_categories)"
-  for c in $(printf '%s' "$categories" | tr ',' ' '); do
-    case "$c" in
-      vscode | go | npm | cargo) dump_flags="$dump_flags --$c" ;;
-      *) log_warn "brew.dump_categories: unknown category '$c' ignored" ;;
-    esac
-  done
   case ",$categories," in
     *,vscode,*) ;;
     *)
@@ -144,14 +207,9 @@ capture_brew() {
       ;;
   esac
 
-  # shellcheck disable=SC2086
-  dump="$(env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 \
-    HOMEBREW_NO_INSTALL_CLEANUP=1 brew bundle dump --file=- $dump_flags 2>/dev/null)" ||
-    die "brew bundle dump failed" 2
-
   dumped_tmp="$(mktemp)"
   merged_tmp="$(mktemp)"
-  printf '%s\n' "$dump" | brewfile_normalize >"$dumped_tmp"
+  brew_dump_normalized "$dumped_tmp"
   brewfile="$(config_dir)/Brewfile"
   brewfile_merge "$brewfile" "$dumped_tmp" "$merged_tmp" | sed 's/^/brew: /'
   run_cmd cp "$merged_tmp" "$brewfile"

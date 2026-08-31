@@ -55,7 +55,8 @@ Commands:
   capture   Reconcile this machine's state into ~/.devseed/config
             (--add PATH adopt a dotfile; --prune remove config-only entries;
              --check alias for diff)
-  diff      Report drift between machine and config (read-only)
+  diff      Report drift between machine and config (read-only; exit 1 on
+            drift, 3 when a layer could not be measured)
   apply     Provision this machine from config
   export    Build a migration bundle from this machine
   restore   Restore files from a devseed backup
@@ -102,7 +103,10 @@ main() {
     capture)
       cmd_capture "$@"
       ;;
-    diff | apply | export | restore | update)
+    diff)
+      cmd_diff "$@"
+      ;;
+    apply | export | restore | update)
       die "devseed $cmd: not implemented yet (see vision.md milestones)" 2
       ;;
     *)
