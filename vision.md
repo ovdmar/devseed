@@ -124,17 +124,17 @@ Updated as each milestone lands; finalized at v0.1.0.
 
 | Req | Capability | Status | Rationale / notes |
 |---|---|---|---|
-| R1 | Zero-prereq entrypoint, MDM-runnable | Planned (M0/M3) | `install.sh` + `devseed apply` bootstrap CLT, Homebrew, chezmoi |
-| R2 | Idempotent; backup before overwrite; `--force` | Planned (M3) | backups + `devseed restore`; first-apply confirm gate |
-| R3 | brew formulae/casks | Planned (M1/M3) | `brew bundle` |
-| R3 | Mac App Store apps | Planned (M1/M3) | `mas` via brew bundle; receipt-census reconciliation guards completeness |
-| R3 | Editor extensions | Opt-in (ADR-5) | default-off `brew.dump_categories` category |
-| R3 | curl-installed tools | Planned (M1/M3) | declared + sha256-checksummed |
+| R1 | Zero-prereq entrypoint, MDM-runnable | Done* | `install.sh` + `devseed apply` bootstrap CLT, Homebrew, chezmoi. *Stock-Mac VM E2E still to be run manually before v0.1.0 |
+| R2 | Idempotent; backup before overwrite; `--force` | Done | backups + `devseed restore`; first-apply confirm gate; CI asserts re-apply no-ops |
+| R3 | brew formulae/casks | Done | `brew bundle` (check fast path, `--no-upgrade`) |
+| R3 | Mac App Store apps | Done | `mas` via brew bundle; receipt-census reconciliation — an unmeasured/incomplete layer exits 3, never a silent clean |
+| R3 | Editor extensions | Opt-in (ADR-5) | default-off `brew.dump_categories` category; apply skips with a report when no editor present |
+| R3 | curl-installed tools | Done | declared + sha256-checksummed (chezmoi itself is row #1) |
 | R3 | GUI apps (drag-installed) | Won't-do (v1) | suggest-only report in capture; not declaratively applied |
-| R3 | macOS defaults | Planned (M1/M3) | Annex A.6 |
-| R3 | Dotfiles | Planned (M1/M3) | chezmoi |
-| R4 | Profiles; company overlay; unattended mode | Planned (M3/M5) | overlay hooks gated by one-time registration |
-| R5 | Selective migration, per-category | Planned (M4) | `--only-categories`/`--except-categories` |
-| R5 | Encrypted transport by default | Deferred (ADR-3) | plain tar + hygiene; `encryption=none` seam |
-| R6 | Capture + drift check exiting non-zero | Planned (M1/M2) | realized as `devseed diff`; `capture --check` kept as alias; exit 1 drift / 3 unmeasurable |
-| R7 | Secrets never in config; references only | Partial (ADR-4) | exclusion list + flag-gated port-once; backends deferred |
+| R3 | macOS defaults | Done | Annex A.6: key-level allowlist, scalar-only, `<unset>` sentinel |
+| R3 | Dotfiles | Done | chezmoi, fully isolated state; recursive exclusions |
+| R4 | Profiles; company overlay; unattended mode | Done | overlay hooks gated by one-time registration; unattended never prompts, exit 3 for skipped layers |
+| R5 | Selective migration, per-category | Done | `--only-categories`/`--except-categories`; `--include-secrets` gates the secrets tier |
+| R5 | Encrypted transport by default | Deferred (ADR-3) | plain tar + file hygiene (0600, umask 077); `encryption=none` seam recorded in bundle meta |
+| R6 | Capture + drift check exiting non-zero | Done | realized as `devseed diff`; `capture --check` kept as alias; exit 1 drift / 3 unmeasurable |
+| R7 | Secrets never in config; references only | Partial (ADR-4) | exclusion list + flag-gated port-once; secret-manager backends deferred |

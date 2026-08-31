@@ -29,12 +29,12 @@ teardown() { common_teardown; }
   [[ "$output" == *"unknown command"* ]]
 }
 
-@test "unimplemented commands exit 2 with a milestone note" {
-  for cmd in update; do
-    run_devseed "$cmd"
-    [ "$status" -eq 2 ]
-    [[ "$output" == *"not implemented yet"* ]]
+@test "every advertised command dispatches (no 'not implemented' left)" {
+  run_devseed help
+  for cmd in capture diff apply export restore update doctor; do
+    [[ "$output" == *"  $cmd"* ]]
   done
+  ! grep -rn "not implemented yet" "$REPO_DIR/lib" "$REPO_DIR/devseed"
 }
 
 @test "doctor runs read-only in a temp env and does not fail hard" {

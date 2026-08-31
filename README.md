@@ -31,10 +31,30 @@ The config committed to this repo (`config.example/`) is a minimal starter;
 `~/.devseed/config` overrides it and is meant to live in your own (private)
 repo.
 
+## Migration between machines
+
+```sh
+devseed export --include-secrets   # old machine: plain-tar bundle in
+                                   # ~/.devseed/bundles (0600; secrets only
+                                   # with the flag — bundles are NOT encrypted)
+devseed apply --from <bundle>      # new machine: merged after the declarative
+                                   # layers; config always outranks carried state
+```
+
+## Company overlay
+
+A private repo layered on top of your config (extra Brewfile, defaults,
+dotfiles, post-apply hooks) — see [docs/overlay.md](docs/overlay.md).
+
+```sh
+devseed apply --overlay git@github.com:your-co/devseed-overlay.git
+```
+
 ## Status
 
-Pre-v0.1.0, milestone M0 (skeleton, installer, doctor). `capture`, `diff`,
-`apply`, `export`, and `restore` land in M1–M4 — see the milestone plan in
+Pre-v0.1.0: all commands implemented (`capture`, `diff`, `apply`, `export`,
+`restore`, `update`, `doctor`) with CI-verified unit + integration suites.
+Remaining before the tag: manual stock-Mac VM end-to-end run — see
 vision.md's requirement status table.
 
 ## Development
