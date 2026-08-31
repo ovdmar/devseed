@@ -36,6 +36,8 @@ cmd_apply() {
   DEVSEED_N_UNMEASURABLE=0
   DEVSEED_N_INCOMPLETE=0
 
+  resolve_overlay apply
+
   # Bootstrap chain. CLT failure is fatal only when brew is also absent —
   # with a working brew the toolchain is already usable.
   if ! ensure_clt && ! command -v brew >/dev/null 2>&1; then
@@ -63,6 +65,11 @@ cmd_apply() {
     st=0
     merge_bundle "$from" || st=$?
     [ "$st" -gt "$worst" ] && worst=$st
+  fi
+
+  # Overlay hook runs last (gated on the registration opt-in).
+  if ! run_overlay_hook; then
+    [ "$worst" -lt 3 ] && worst=3
   fi
 
   if [ "${DEVSEED_DRY_RUN:-0}" != "1" ] && [ "$worst" -eq 0 ]; then

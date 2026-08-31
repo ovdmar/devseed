@@ -11,14 +11,18 @@
 # apply; the machine's FIRST apply over differing files needs --force or an
 # interactive confirm (unattended without --force skips the layer, exit 3).
 apply_dotfiles() {
-  local status_out line rel ts bdir backed=0
+  local status_out over_status="" line rel ts bdir backed=0
   if ! chezmoi_bin >/dev/null 2>&1; then
     log "dotfiles: skipped: chezmoi not installed"
     DEVSEED_N_SKIPPED=$((DEVSEED_N_SKIPPED + 1))
     return 3
   fi
+  if overlay_dotfiles_active; then
+    overlay_dotfiles_preflight
+    over_status="$(overlay_chezmoi_cmd status 2>/dev/null || true)"
+  fi
   status_out="$(chezmoi_cmd status 2>/dev/null || true)"
-  if [ -z "$status_out" ]; then
+  if [ -z "$status_out" ] && [ -z "$over_status" ]; then
     log "dotfiles: already converged"
     return 0
   fi
@@ -46,10 +50,12 @@ apply_dotfiles() {
     backed=$((backed + 1))
   done <<EOF
 $status_out
+$over_status
 EOF
   [ "$backed" -gt 0 ] && log "dotfiles: backed up $backed file(s) to $bdir (devseed restore $ts)"
 
-  run_cmd chezmoi_cmd apply
+  [ -n "$status_out" ] && run_cmd chezmoi_cmd apply
+  [ -n "$over_status" ] && run_cmd overlay_chezmoi_cmd apply
   if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
     mkdir -p "$(state_dir)"
     touch "$(state_dir)/applied"
@@ -68,6 +74,11 @@ diff_dotfiles() {
     return 3
   fi
   status_out="$(chezmoi_cmd status 2>/dev/null || true)"
+  if overlay_dotfiles_active; then
+    status_out="$status_out
+$(overlay_chezmoi_cmd status 2>/dev/null | sed 's/$/ [overlay]/' || true)"
+    status_out="$(printf '%s\n' "$status_out" | grep -v '^ \[overlay\]$' | grep -v '^$' || true)"
+  fi
   if [ -z "$status_out" ]; then
     return 0
   fi
@@ -114,6 +125,41 @@ chezmoi_cmd() {
     --persistent-state "$(state_dir)/chezmoi/chezmoistate.boltdb" \
     --cache "$(state_dir)/chezmoi/cache" \
     "$@"
+}
+
+# overlay_chezmoi_cmd — the overlay's ISOLATED second pass: its own source
+# dir and its own persistent state/cache (chezmoi cannot merge two source
+# dirs; two isolated passes with enforced disjointness is predictable).
+overlay_chezmoi_cmd() {
+  local cm
+  cm="$(chezmoi_bin)" || die "chezmoi not available" 2
+  mkdir -p "$(state_dir)/chezmoi-overlay"
+  "$cm" \
+    --source "$DEVSEED_OVERLAY_DIR/chezmoi" \
+    --destination "$DEVSEED_TARGET" \
+    --config "$(write_chezmoi_config)" \
+    --persistent-state "$(state_dir)/chezmoi-overlay/chezmoistate.boltdb" \
+    --cache "$(state_dir)/chezmoi-overlay/cache" \
+    "$@"
+}
+
+overlay_dotfiles_active() {
+  [ -n "${DEVSEED_OVERLAY_DIR:-}" ] && [ -d "$DEVSEED_OVERLAY_DIR/chezmoi" ]
+}
+
+# overlay_dotfiles_preflight — base- and overlay-managed target paths must
+# be disjoint; a collision is a config error (exit 2, paths listed).
+overlay_dotfiles_preflight() {
+  local base_managed over_managed collisions
+  base_managed="$(chezmoi_cmd managed --include files 2>/dev/null || true)"
+  over_managed="$(overlay_chezmoi_cmd managed --include files 2>/dev/null || true)"
+  [ -n "$base_managed" ] && [ -n "$over_managed" ] || return 0
+  collisions="$(printf '%s\n' "$base_managed" | grep -xF "$over_managed" || true)"
+  if [ -n "$collisions" ]; then
+    log_error "overlay and base config both manage these paths (must be disjoint):"
+    printf '%s\n' "$collisions" >&2
+    exit 2
+  fi
 }
 
 # candidate_filter_reason ABSPATH — non-empty reason when the path must not

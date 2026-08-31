@@ -8,9 +8,7 @@
 # apply_defaults — typed compare, write only on mismatch, <unset> skipped,
 # app restarts per restart-map for touched domains.
 apply_defaults() {
-  local values domain key dtype want actual have flag touched="" app
-  values="$(config_dir)/defaults/values.tsv"
-  [ -f "$values" ] || return 0
+  local domain key dtype want actual have flag touched="" app
   while IFS="$(printf '\t')" read -r domain key dtype want; do
     [ -n "$domain" ] || continue
     [ "$want" = "<unset>" ] && continue
@@ -35,7 +33,7 @@ apply_defaults() {
       *) touched="$touched $domain" ;;
     esac
   done <<EOF
-$(tsv_rows "$values")
+$(merged_defaults_rows)
 EOF
 
   for domain in $touched; do
@@ -48,15 +46,28 @@ EOF
   return 0
 }
 
-# diff_defaults — compare values.tsv against the machine, read-only.
+# merged_defaults_rows — the effective desired defaults: base values.tsv,
+# then the active profile's defaults.tsv, then the overlay's values.tsv —
+# later files win per domain+key. Emitted sorted.
+merged_defaults_rows() {
+  {
+    tsv_rows "$(config_dir)/defaults/values.tsv"
+    tsv_rows "$(config_dir)/profiles/$(resolve_profile)/defaults.tsv"
+    if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
+      tsv_rows "$DEVSEED_OVERLAY_DIR/defaults/values.tsv"
+    fi
+  } | awk -F '\t' '
+    { k = $1 "\t" $2; row[k] = $0; if (!(k in seen)) { order[++n] = k; seen[k] = 1 } }
+    END { for (i = 1; i <= n; i++) print row[order[i]] }
+  ' | LC_ALL=C sort
+}
+
+# diff_defaults — compare the merged desired values against the machine,
+# read-only.
 # Drift kinds: differs / unset-on-machine / unset-in-config /
 # non-scalar-on-machine (reported, never a hard death in diff).
 diff_defaults() {
-  local st=0 values domain key dtype want actual have
-  values="$(config_dir)/defaults/values.tsv"
-  if [ ! -f "$values" ]; then
-    return 0
-  fi
+  local st=0 domain key dtype want actual have
   while IFS="$(printf '\t')" read -r domain key dtype want; do
     [ -n "$domain" ] || continue
     if ! actual="$(defaults read-type "$domain" "$key" 2>/dev/null)"; then
@@ -90,7 +101,7 @@ diff_defaults() {
       st=1
     fi
   done <<EOF
-$(tsv_rows "$values")
+$(merged_defaults_rows)
 EOF
   return "$st"
 }

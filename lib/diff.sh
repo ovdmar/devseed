@@ -17,6 +17,8 @@ cmd_diff() {
   DEVSEED_N_INCOMPLETE=0
   DEVSEED_N_DRIFT=0
 
+  resolve_overlay readonly
+
   for layer in brew dotfiles defaults curl-tools; do
     layer_selected "$layer" || continue
     layers=$((layers + 1))

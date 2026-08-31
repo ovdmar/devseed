@@ -60,7 +60,22 @@ apply_brew() {
     apply_brewfile "$profile_frag" || s=$?
     [ "$s" -gt "$st" ] && st=$s
   fi
+  if [ -n "${DEVSEED_OVERLAY_DIR:-}" ] && [ -f "$DEVSEED_OVERLAY_DIR/Brewfile" ] &&
+    brewfile_entries "$DEVSEED_OVERLAY_DIR/Brewfile" | grep -q .; then
+    s=0
+    apply_brewfile "$DEVSEED_OVERLAY_DIR/Brewfile" || s=$?
+    [ "$s" -gt "$st" ] && st=$s
+  fi
   return "$st"
+}
+
+# brew_committed_entries FILE_OUT — base + overlay Brewfile entries (the
+# union config that diff/capture reconcile against).
+brew_committed_entries() {
+  brewfile_entries "$(config_dir)/Brewfile"
+  if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
+    brewfile_entries "$DEVSEED_OVERLAY_DIR/Brewfile"
+  fi
 }
 
 # brew_dump_normalized OUTFILE — normalized `brew bundle dump` honoring the
@@ -110,13 +125,13 @@ diff_brew() {
       [ "$st" -eq 0 ] && st=1
     fi
   done <<EOF
-$(brewfile_entries "$(config_dir)/Brewfile")
+$(brew_committed_entries)
 EOF
 
   while IFS= read -r line; do
     [ -n "$line" ] || continue
     key="$(brewfile_key "$line")"
-    if ! brewfile_entries "$(config_dir)/Brewfile" | grep -qF "$key"; then
+    if ! brew_committed_entries | grep -qF "$key"; then
       log "brew: missing-in-config: $key"
       DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
       [ "$st" -eq 0 ] && st=1
@@ -266,8 +281,43 @@ capture_brew() {
   merged_tmp="$(mktemp)"
   brew_dump_normalized "$dumped_tmp"
   brewfile="$(config_dir)/Brewfile"
-  brewfile_merge "$brewfile" "$dumped_tmp" "$merged_tmp" | sed 's/^/brew: /'
-  run_cmd cp "$merged_tmp" "$brewfile"
+
+  local combined okeys base_out
+  combined="$(mktemp)"
+  brew_committed_entries >"$combined"
+  brewfile_merge "$combined" "$dumped_tmp" "$merged_tmp" | sed 's/^/brew: /'
+
+  if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
+    okeys="$(mktemp)"
+    brewfile_entries "$DEVSEED_OVERLAY_DIR/Brewfile" |
+      while IFS= read -r l; do brewfile_key "$l"; done >"$okeys"
+    if [ "${DEVSEED_CAPTURE_TO:-}" = "overlay" ]; then
+      # new machine-only entries go to the overlay; base stays untouched
+      base_out="$(mktemp)"
+      {
+        brewfile_entries "$DEVSEED_OVERLAY_DIR/Brewfile"
+        while IFS= read -r l; do
+          [ -n "$l" ] || continue
+          grep -qF "$(brewfile_key "$l")" "$combined" || printf '%s\n' "$l"
+        done <"$merged_tmp"
+      } | brewfile_normalize >"$base_out"
+      run_cmd cp "$base_out" "$DEVSEED_OVERLAY_DIR/Brewfile"
+      rm -f "$base_out"
+    else
+      # base gets the union minus overlay-owned entries
+      base_out="$(mktemp)"
+      while IFS= read -r l; do
+        [ -n "$l" ] || continue
+        grep -qxF "$(brewfile_key "$l")" "$okeys" || printf '%s\n' "$l"
+      done <"$merged_tmp" >"$base_out"
+      run_cmd cp "$base_out" "$brewfile"
+      rm -f "$base_out"
+    fi
+    rm -f "$okeys"
+  else
+    run_cmd cp "$merged_tmp" "$brewfile"
+  fi
+  rm -f "$combined"
 
   if command -v mas >/dev/null 2>&1; then
     mas_lines="$(grep -c '^mas "' "$merged_tmp" || true)"

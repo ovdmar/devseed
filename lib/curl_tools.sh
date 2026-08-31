@@ -14,9 +14,23 @@ apply_curl_tools() {
     fi
     install_curl_tool "$name" "$(target_path "${dest:-.local/bin}")"
   done <<EOF
-$(tsv_rows "$(config_dir)/curl-tools.tsv" | awk -F '\t' -v a="$arch" '$3 == a')
+$(merged_curl_rows | awk -F '\t' -v a="$arch" '$3 == a')
 EOF
   return 0
+}
+
+# merged_curl_rows — base + overlay curl-tools rows, overlay-last-wins per
+# name+arch.
+merged_curl_rows() {
+  {
+    tsv_rows "$(config_dir)/curl-tools.tsv"
+    if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
+      tsv_rows "$DEVSEED_OVERLAY_DIR/curl-tools.tsv"
+    fi
+  } | awk -F '\t' '
+    { k = $1 "\t" $3; row[k] = $0; if (!(k in seen)) { order[++n] = k; seen[k] = 1 } }
+    END { for (i = 1; i <= n; i++) print row[order[i]] }
+  '
 }
 
 # diff_curl_tools — declared tools (this arch) present on the machine?
@@ -33,7 +47,7 @@ diff_curl_tools() {
     DEVSEED_N_DRIFT=$((DEVSEED_N_DRIFT + 1))
     st=1
   done <<EOF
-$(tsv_rows "$(config_dir)/curl-tools.tsv" | awk -F '\t' -v a="$arch" '$3 == a')
+$(merged_curl_rows | awk -F '\t' -v a="$arch" '$3 == a')
 EOF
   return "$st"
 }
@@ -52,7 +66,7 @@ verify_checksum() {
 install_curl_tool() {
   local name="$1" destdir="$2" arch row url sha type strip tmp bin
   arch="$(uname -m)"
-  row="$(tsv_rows "$(config_dir)/curl-tools.tsv" |
+  row="$(merged_curl_rows |
     awk -F '\t' -v n="$name" -v a="$arch" '$1 == n && $3 == a { print; exit }')"
   [ -n "$row" ] || die "curl-tools.tsv has no row for $name/$arch" 2
   url="$(printf '%s\n' "$row" | cut -f 4)"

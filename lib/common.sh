@@ -71,6 +71,7 @@ run_cmd() {
 # rest (in order) in the DEVSEED_ARGS array for the subcommand.
 parse_global_flags() {
   DEVSEED_PROFILE_FLAG=""
+  DEVSEED_OVERLAY_FLAG=""
   DEVSEED_DRY_RUN="${DEVSEED_DRY_RUN:-0}"
   DEVSEED_FORCE=0
   DEVSEED_UNATTENDED=0
@@ -114,6 +115,11 @@ parse_global_flags() {
         DEVSEED_VERBOSE=1
         shift
         ;;
+      --overlay)
+        [ "$#" -ge 2 ] || die "--overlay requires a path or git URL" 2
+        DEVSEED_OVERLAY_FLAG="$2"
+        shift 2
+        ;;
       *)
         DEVSEED_ARGS[${#DEVSEED_ARGS[@]}]="$1"
         shift
@@ -122,7 +128,8 @@ parse_global_flags() {
   done
 
   export DEVSEED_PROFILE_FLAG DEVSEED_DRY_RUN DEVSEED_FORCE \
-    DEVSEED_UNATTENDED DEVSEED_VERBOSE DEVSEED_ONLY DEVSEED_EXCEPT
+    DEVSEED_UNATTENDED DEVSEED_VERBOSE DEVSEED_ONLY DEVSEED_EXCEPT \
+    DEVSEED_OVERLAY_FLAG
 }
 
 # layer_selected LAYER — true when LAYER passes --only/--except.
@@ -289,7 +296,13 @@ is_excluded() {
         ;;
     esac
   done <<EOF
-$(tsv_rows "$(config_dir)/exclusions.txt")
+$(
+    tsv_rows "$(config_dir)/exclusions.txt"
+    # Overlays may only ADD exclusions, never relax them (concatenated).
+    if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
+      tsv_rows "$DEVSEED_OVERLAY_DIR/exclusions.txt"
+    fi
+  )
 EOF
   return 1
 }

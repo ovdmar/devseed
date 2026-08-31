@@ -73,6 +73,13 @@ cmd_capture() {
         check=1
         shift
         ;;
+      --to)
+        [ "$#" -ge 2 ] || die "capture --to requires a value ('overlay')" 2
+        [ "$2" = "overlay" ] || die "capture --to only accepts 'overlay'" 2
+        # shellcheck disable=SC2034 # read by capture_brew
+        DEVSEED_CAPTURE_TO="overlay"
+        shift 2
+        ;;
       *)
         die "capture: unknown argument: $1" 2
         ;;
@@ -90,6 +97,10 @@ cmd_capture() {
   export DEVSEED_PRUNE
 
   bootstrap_user_config
+  resolve_overlay readonly
+  if [ "${DEVSEED_CAPTURE_TO:-}" = "overlay" ] && [ -z "${DEVSEED_OVERLAY_DIR:-}" ]; then
+    die "capture --to overlay: no overlay is active (use --overlay PATH|URL)" 2
+  fi
 
   if [ -n "$add_path" ]; then
     capture_add "$add_path"

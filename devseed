@@ -69,6 +69,7 @@ Commands:
 
 Global flags:
   --profile P    Select a profile (default: last used, else "default")
+  --overlay O    Company overlay: local path or git URL (see docs/overlay.md)
   --only LAYERS  Comma-separated layer list (brew,dotfiles,defaults,curl-tools)
   --except LAYERS
   --dry-run      Print what would change; change nothing
