@@ -1,7 +1,10 @@
 name: ci
 
+# push covers main; pull_request covers branches (running both double-built
+# every PR branch and the two events see different checkouts anyway).
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:

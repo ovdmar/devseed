@@ -7,7 +7,12 @@ load helpers/setup
 setup() {
   common_setup
   DEVSEED_BIN_DIR="$BATS_TEST_TMPDIR/bin"
-  DEVSEED_INSTALL_SOURCE="$REPO_DIR"
+  # Intermediate clone with a guaranteed branch: on pull_request CI the
+  # checkout is a detached HEAD (refs/pull/N/merge), and cloning that
+  # yields a repo with no default branch, breaking update's fast-forward.
+  DEVSEED_INSTALL_SOURCE="$BATS_TEST_TMPDIR/src"
+  git clone -q "$REPO_DIR" "$DEVSEED_INSTALL_SOURCE"
+  git -C "$DEVSEED_INSTALL_SOURCE" checkout -q -B main
   export DEVSEED_BIN_DIR DEVSEED_INSTALL_SOURCE
 }
 teardown() { common_teardown; }
