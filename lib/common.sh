@@ -33,18 +33,20 @@ die() {
 # (returns false so callers take the safe path). Reads from /dev/tty so it
 # works under `curl | bash`-style stdin.
 confirm() {
-  local reply
+  local reply=""
   if [ "${DEVSEED_UNATTENDED:-0}" = "1" ]; then
     return 1
   fi
-  if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+  # /dev/tty must be OPENABLE, not merely present (CI runners have an
+  # unopenable /dev/tty: "Device not configured").
+  if [ ! -t 0 ] && ! (: </dev/tty) 2>/dev/null; then
     return 1
   fi
   printf 'devseed: %s [y/N] ' "$1"
   if [ -t 0 ]; then
     read -r reply
   else
-    read -r reply </dev/tty
+    read -r reply </dev/tty 2>/dev/null || reply=""
   fi
   case "$reply" in
     y | Y | yes | YES) return 0 ;;

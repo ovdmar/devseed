@@ -29,17 +29,19 @@ fail() {
 }
 
 # ask PROMPT — reads from /dev/tty (a bare `read` under `curl | bash` would
-# consume the script itself). Non-interactive: auto-yes.
+# consume the script itself). Non-interactive: auto-yes. NB: probe that
+# /dev/tty can actually be OPENED — on CI runners it exists but opening it
+# fails with "Device not configured".
 ask() {
-  local reply
-  if [ ! -t 0 ] && [ ! -e /dev/tty ]; then
+  local reply=""
+  if [ ! -t 0 ] && ! (: </dev/tty) 2>/dev/null; then
     return 0
   fi
   printf 'devseed-install: %s [Y/n] ' "$1"
   if [ -t 0 ]; then
     read -r reply
   else
-    read -r reply </dev/tty || reply=""
+    read -r reply </dev/tty 2>/dev/null || reply=""
   fi
   case "$reply" in
     n | N | no | NO) return 1 ;;
