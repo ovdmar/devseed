@@ -1,0 +1,4 @@
+.DS_Store
+.bats-bash-shim/
+*.tar.gz
+.context/

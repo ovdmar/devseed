@@ -1,0 +1,3 @@
+# app-data.list — curated ~/Library/Application Support dirs worth migrating.
+# Opt lines in by uncommenting; exclusions.txt always wins.
+# Library/Application Support/iTerm2/**

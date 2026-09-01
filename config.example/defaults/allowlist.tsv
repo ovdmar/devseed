@@ -1,0 +1,11 @@
+# allowlist.tsv — the macOS defaults keys devseed may read (capture) and
+# write (apply). domain<TAB>key<TAB>type. Scalar types only in v1
+# (bool/int/float/string); see vision.md Annex A.6.
+NSGlobalDomain	AppleShowAllExtensions	bool
+NSGlobalDomain	InitialKeyRepeat	int
+NSGlobalDomain	KeyRepeat	int
+com.apple.dock	autohide	bool
+com.apple.dock	tilesize	int
+com.apple.finder	AppleShowAllFiles	bool
+com.apple.finder	ShowPathbar	bool
+com.apple.screencapture	location	string

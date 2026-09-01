@@ -1,0 +1,7 @@
+# curl-tools.tsv — declared, pinned, sha256-verified curl-installed tools.
+# name<TAB>version<TAB>arch<TAB>url<TAB>sha256<TAB>type<TAB>strip-path<TAB>dest
+# type: bin (raw binary) | tar (tarball; strip-path = member to extract).
+# chezmoi is tool #1: the engine's own bootstrap uses this row when Homebrew
+# is unavailable.
+chezmoi	2.72.1	arm64	https://github.com/twpayne/chezmoi/releases/download/v2.72.1/chezmoi_2.72.1_darwin_arm64.tar.gz	938d422091cc001e68fe3fd7efea9b923a36facbf2b8db67063639abbaf72de2	tar	chezmoi	.local/bin
+chezmoi	2.72.1	x86_64	https://github.com/twpayne/chezmoi/releases/download/v2.72.1/chezmoi_2.72.1_darwin_amd64.tar.gz	bf0f0e048291efe126cb8bc51cf566057b92755cd53ce82c45efa11d2f8f4898	tar	chezmoi	.local/bin

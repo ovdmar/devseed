@@ -1,0 +1,3 @@
+# values.tsv — captured desired values for allowlisted defaults keys.
+# domain<TAB>key<TAB>type<TAB>value, sorted; absent keys recorded as <unset>
+# (apply skips them). Populated by `devseed capture`.

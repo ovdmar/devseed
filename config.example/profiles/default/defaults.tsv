@@ -1,0 +1,2 @@
+# Profile "default" — defaults overrides (domain<TAB>key<TAB>type<TAB>value),
+# merged over defaults/values.tsv, later-file-wins per domain+key.

@@ -1,0 +1,4 @@
+# shell-history.list — OFF by default: only exported when named explicitly
+# via --only-categories shell-history. History can contain pasted secrets.
+.zsh_history
+.bash_history

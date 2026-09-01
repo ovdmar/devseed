@@ -1,0 +1,6 @@
+# restart-map.tsv — app to `killall` after a defaults write touches a domain.
+# domain<TAB>app ("-" = no restart needed).
+NSGlobalDomain	-
+com.apple.dock	Dock
+com.apple.finder	Finder
+com.apple.screencapture	SystemUIServer

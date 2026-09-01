@@ -1,0 +1,18 @@
+# exclusions.txt — paths (globs, relative to $HOME) that capture and export
+# skip by default so tokens/keys don't land in a config repo by accident.
+# User-editable; `devseed export --include-secrets` overrides for the
+# secrets category only. Enforced recursively (a directory add cannot pull
+# an excluded child).
+.ssh/**
+.gnupg/**
+.aws/credentials
+.netrc
+.npmrc
+.config/gh/hosts.yml
+.config/configstore/**
+.docker/config.json
+.kube/config
+**/*.pem
+**/*.key
+**/id_rsa*
+**/id_ed25519*

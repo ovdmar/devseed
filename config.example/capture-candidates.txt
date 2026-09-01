@@ -1,0 +1,11 @@
+# capture-candidates.txt — dotfile paths (relative to $HOME) that
+# `devseed capture` may SUGGEST adopting when they exist and are unmanaged.
+# Suggestions are filtered against exclusions.txt and by file type
+# (sockets, out-of-tree symlinks, oversized files are skipped).
+# Nothing is adopted without `devseed capture --add PATH`.
+.zshrc
+.zprofile
+.gitconfig
+.config/git
+.config/karabiner
+.config/iterm2

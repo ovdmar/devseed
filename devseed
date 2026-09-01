@@ -1,0 +1,140 @@
+#!/bin/bash
+# devseed — declare, capture, and apply a macOS environment.
+# Zero-prerequisite entrypoint; bash 3.2 compatible (macOS /bin/bash).
+set -eu
+set -o pipefail
+
+DEVSEED_VERSION="0.1.0-dev"
+
+# Resolve the engine directory. Dev mode: when this script sits in a working
+# tree (lib/ beside it), that tree is the engine; otherwise the installed
+# clone under $DEVSEED_ROOT/engine.
+devseed_script_dir() {
+  local src dir
+  src="$0"
+  while [ -L "$src" ]; do
+    dir="$(cd "$(dirname "$src")" && pwd -P)"
+    src="$(readlink "$src")"
+    case "$src" in
+      /*) ;;
+      *) src="$dir/$src" ;;
+    esac
+  done
+  cd "$(dirname "$src")" && pwd -P
+}
+
+DEVSEED_ROOT="${DEVSEED_ROOT:-$HOME/.devseed}"
+DEVSEED_TARGET="${DEVSEED_TARGET:-$HOME}"
+export DEVSEED_ROOT DEVSEED_TARGET
+
+_script_dir="$(devseed_script_dir)"
+if [ -d "$_script_dir/lib" ]; then
+  DEVSEED_ENGINE="$_script_dir"
+else
+  DEVSEED_ENGINE="$DEVSEED_ROOT/engine"
+fi
+export DEVSEED_ENGINE
+
+if [ ! -d "$DEVSEED_ENGINE/lib" ]; then
+  echo "devseed: engine not found at $DEVSEED_ENGINE (run install.sh first)" >&2
+  exit 2
+fi
+
+for _lib in "$DEVSEED_ENGINE"/lib/*.sh; do
+  # shellcheck source=/dev/null
+  . "$_lib"
+done
+
+usage() {
+  cat <<EOF
+devseed — declare, capture, and apply a macOS environment
+
+Usage: devseed <command> [flags]
+
+Commands:
+  capture   Reconcile this machine's state into ~/.devseed/config
+            (--add PATH adopt a dotfile; --prune remove config-only entries;
+             --check alias for diff)
+  diff      Report drift between machine and config (read-only; exit 1 on
+            drift, 3 when a layer could not be measured)
+  apply     Provision this machine from config
+  export    Build a migration bundle from this machine
+            (--include-secrets; --only-categories/--except-categories CATS;
+             --output PATH; bundles are plain tar, 0600, in ~/.devseed/bundles)
+  restore   Restore files from a devseed backup
+  update    Update the installed engine to the latest release
+  doctor    Report environment and config health
+  version   Print version
+  help      Show this help
+
+Global flags:
+  --profile P    Select a profile (default: last used, else "default")
+  --overlay O    Company overlay: local path or git URL (see docs/overlay.md)
+  --only LAYERS  Comma-separated layer list (brew,dotfiles,defaults,curl-tools)
+  --except LAYERS
+  --dry-run      Print what would change; change nothing
+  --force        Allow overwrites/prunes that otherwise refuse
+  --unattended   Never prompt; take the safe path
+  --verbose      More logging
+
+Exit codes: 0 ok/no drift, 1 drift, 2 error, 3 refused or partial.
+EOF
+}
+
+main() {
+  local cmd=""
+  if [ "$#" -gt 0 ]; then
+    cmd="$1"
+    shift
+  fi
+
+  parse_global_flags "$@"
+  # Remaining (non-global) args are in DEVSEED_ARGS.
+  # shellcheck disable=SC2154
+  set -- "${DEVSEED_ARGS[@]+"${DEVSEED_ARGS[@]}"}"
+
+  case "$cmd" in
+    version | --version | -V)
+      devseed_print_version
+      ;;
+    help | --help | -h | "")
+      usage
+      ;;
+    doctor)
+      cmd_doctor "$@"
+      ;;
+    capture)
+      cmd_capture "$@"
+      ;;
+    diff)
+      cmd_diff "$@"
+      ;;
+    apply)
+      cmd_apply "$@"
+      ;;
+    restore)
+      cmd_restore "$@"
+      ;;
+    export)
+      cmd_export "$@"
+      ;;
+    update)
+      cmd_update "$@"
+      ;;
+    *)
+      log_error "unknown command: $cmd"
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+devseed_print_version() {
+  local v="$DEVSEED_VERSION"
+  if [ -d "$DEVSEED_ENGINE/.git" ] || [ -f "$DEVSEED_ENGINE/.git" ]; then
+    v="$(git -C "$DEVSEED_ENGINE" describe --tags --always --dirty 2>/dev/null || echo "$v")"
+  fi
+  echo "devseed $v"
+}
+
+main "$@"
