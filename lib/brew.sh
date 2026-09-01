@@ -30,12 +30,16 @@ apply_brewfile() {
     use="$(mktemp)"
     grep -v '^vscode "' "$file" >"$use"
   fi
-  if env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 \
+  # HOMEBREW_BUNDLE_NO_UPGRADE: without it, `bundle check` counts installed-
+  # but-outdated packages as unsatisfied and the fast path never triggers —
+  # upgrades stay a human action.
+  if env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_BUNDLE_NO_UPGRADE=1 \
     brew bundle check --file="$use" >/dev/null 2>&1; then
     log "brew: $file already satisfied"
   else
     run_cmd env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ENV_HINTS=1 \
-      HOMEBREW_NO_INSTALL_CLEANUP=1 brew bundle --no-upgrade --file="$use" ||
+      HOMEBREW_NO_INSTALL_CLEANUP=1 HOMEBREW_BUNDLE_NO_UPGRADE=1 \
+      brew bundle --no-upgrade --file="$use" ||
       die "brew bundle failed for $file" 2
   fi
   [ "$use" = "$file" ] || rm -f "$use"

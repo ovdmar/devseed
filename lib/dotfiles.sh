@@ -312,7 +312,10 @@ capture_dotfiles() {
     [ -n "$cand" ] || continue
     abs="$(target_path "$cand")"
     [ -e "$abs" ] || continue
-    if [ -n "$managed" ] && printf '%s\n' "$managed" | grep -qx "$cand"; then
+    # managed as a file, or a directory candidate with managed contents
+    if [ -n "$managed" ] &&
+      { printf '%s\n' "$managed" | grep -qx "$cand" ||
+        printf '%s\n' "$managed" | grep -q "^$cand/"; }; then
       continue
     fi
     if is_excluded "$cand"; then
