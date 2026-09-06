@@ -93,6 +93,14 @@ main() {
   # shellcheck disable=SC2154
   set -- "${DEVSEED_ARGS[@]+"${DEVSEED_ARGS[@]}"}"
 
+  # Warn about a newer upstream version before running real commands
+  # (not version/help, not update itself, never for unknown commands).
+  case "$cmd" in
+    doctor | capture | diff | apply | restore | export)
+      update_check
+      ;;
+  esac
+
   case "$cmd" in
     version | --version | -V)
       devseed_print_version
