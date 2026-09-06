@@ -13,7 +13,10 @@ setup() {
   DEVSEED_INSTALL_SOURCE="$BATS_TEST_TMPDIR/src"
   git clone -q "$REPO_DIR" "$DEVSEED_INSTALL_SOURCE"
   git -C "$DEVSEED_INSTALL_SOURCE" checkout -q -B main
-  export DEVSEED_BIN_DIR DEVSEED_INSTALL_SOURCE
+  # This suite tests the update check itself: opt back in (the harness
+  # disables it globally so other suites never probe).
+  DEVSEED_NO_UPDATE_CHECK=0
+  export DEVSEED_BIN_DIR DEVSEED_INSTALL_SOURCE DEVSEED_NO_UPDATE_CHECK
 }
 teardown() { common_teardown; }
 
@@ -54,13 +57,16 @@ advance_source() {
 
 check_state() { echo "$DEVSEED_ROOT/state/update-check"; }
 
-@test "update check: warns on stderr when the engine is behind" {
+@test "update check: warns on stderr (not stdout) when the engine is behind" {
   install_engine
   advance_source
-  run "$DEVSEED_BIN_DIR/devseed" doctor
-  [ "$status" -lt 2 ] # doctor's own exit code, unaffected
-  [[ "$output" == *"newer version"* ]]
-  [[ "$output" == *"devseed update"* ]]
+  # precondition for the HEAD-comparison branch: the repo has no v* tags
+  [ -z "$(git -C "$DEVSEED_INSTALL_SOURCE" tag -l 'v*')" ]
+  "$DEVSEED_BIN_DIR/devseed" doctor \
+    >"$BATS_TEST_TMPDIR/out" 2>"$BATS_TEST_TMPDIR/err" || [ "$?" -lt 2 ]
+  grep -q "newer version" "$BATS_TEST_TMPDIR/err"
+  grep -q "devseed update" "$BATS_TEST_TMPDIR/err"
+  ! grep -q "newer version" "$BATS_TEST_TMPDIR/out"
 }
 
 @test "update check: silent when up to date" {
@@ -120,15 +126,121 @@ check_state() { echo "$DEVSEED_ROOT/state/update-check"; }
   [ ! -f "$(check_state)" ]
 }
 
-@test "update check: skipped entirely in dev mode" {
-  run_devseed doctor # dev-mode engine (the worktree)
+@test "update check: skipped in dev mode even with an installed, behind engine present" {
+  install_engine
+  advance_source
+  run_devseed doctor # dev-mode entrypoint (the worktree), engine exists and is behind
   [[ "$output" != *"newer version"* ]]
   [ ! -f "$(check_state)" ]
 }
 
-@test "update check: a remote release tag absent locally means newer" {
+@test "update check: a remote release tag not an ancestor of HEAD means newer" {
   install_engine
+  advance_source # the tag points at a commit the engine doesn't have
   git -C "$DEVSEED_INSTALL_SOURCE" tag v9.9.9
   run "$DEVSEED_BIN_DIR/devseed" doctor
   [[ "$output" == *"newer version"* ]]
+}
+
+@test "update check: unreleased commits after the newest local tag stay silent" {
+  install_engine
+  git -C "$DEVSEED_INSTALL_SOURCE" tag v1.0.0 # engine HEAD == tag commit
+  advance_source                              # default branch moves past the tag
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" != *"newer version"* ]]
+  grep -q "current" "$(check_state)"
+}
+
+@test "update check: settings update.check=off disables it (and on keeps it)" {
+  install_engine
+  advance_source
+  printf 'update.check\toff\n' >>"$DEVSEED_ROOT/config/settings.tsv"
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" != *"newer version"* ]]
+  [ ! -f "$(check_state)" ]
+  perl -pi -e 's/^update\.check\toff$/update.check\ton/' "$DEVSEED_ROOT/config/settings.tsv"
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" == *"newer version"* ]]
+}
+
+@test "update check: an occupied state path never breaks the command" {
+  install_engine
+  advance_source
+  : >"$DEVSEED_ROOT/state" # state path is a FILE: mkdir -p must fail
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [ "$status" -lt 2 ]
+  [[ "$output" == *"devseed doctor"* ]]
+  [[ "$output" == *"status:"* ]]
+}
+
+@test "update check: warning does not change the command's exit code" {
+  install_engine
+  advance_source
+  cp -R "$REPO_DIR/config.example" "$DEVSEED_ROOT/config" 2>/dev/null || true
+  printf 'bogus-tool\t1.0\t%s\thttps://example.invalid/x\tdeadbeef\tbin\t-\t.local/bin\n' \
+    "$(uname -m)" >>"$DEVSEED_ROOT/config/curl-tools.tsv"
+  run "$DEVSEED_BIN_DIR/devseed" diff --only curl-tools
+  [ "$status" -eq 1 ] # drift, exactly — not overwritten by the check
+  [[ "$output" == *"newer version"* ]]
+}
+
+@test "update check: --dry-run neither probes nor writes state" {
+  install_engine
+  advance_source
+  run "$DEVSEED_BIN_DIR/devseed" doctor --dry-run
+  [[ "$output" != *"newer version"* ]] # no cache yet, no probe allowed
+  [ ! -f "$(check_state)" ]
+}
+
+@test "update check: TTL boundary — silent just inside, probes at exactly 24h, recovers from clock skew" {
+  install_engine
+  run "$DEVSEED_BIN_DIR/devseed" doctor >/dev/null
+  advance_source
+  printf '%s\tcurrent\n' $(($(date +%s) - 86399)) >"$(check_state)"
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" != *"newer version"* ]]
+  printf '%s\tcurrent\n' $(($(date +%s) - 86400)) >"$(check_state)"
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" == *"newer version"* ]]
+  printf '%s\tcurrent\n' $(($(date +%s) + 999999)) >"$(check_state)"
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" == *"newer version"* ]] # future timestamp = stale, re-probe
+}
+
+@test "update check: corrupt state files re-probe instead of going silent" {
+  install_engine
+  advance_source
+  for payload in 'garbage' "$(date +%s)" ''; do
+    printf '%s\n' "$payload" >"$(check_state)"
+    run "$DEVSEED_BIN_DIR/devseed" doctor
+    [[ "$output" == *"newer version"* ]]
+    grep -q "$(printf '\tnewer')" "$(check_state)"
+  done
+}
+
+@test "update check: a successful devseed update clears the cached warning immediately" {
+  install_engine
+  advance_source
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" == *"newer version"* ]]
+  run "$DEVSEED_BIN_DIR/devseed" update
+  [ "$status" -eq 0 ]
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" != *"newer version"* ]]
+}
+
+@test "update check: hook fires for every real command, never for help/unknown" {
+  install_engine
+  advance_source
+  run "$DEVSEED_BIN_DIR/devseed" doctor >/dev/null # prime the cache (newer)
+  for cmd in doctor capture diff apply restore export; do
+    run "$DEVSEED_BIN_DIR/devseed" "$cmd" --dry-run
+    [[ "$output" == *"newer version"* ]] # cached verdict warns for each
+  done
+  rm -f "$(check_state)"
+  run "$DEVSEED_BIN_DIR/devseed" help
+  [ ! -f "$(check_state)" ]
+  run "$DEVSEED_BIN_DIR/devseed" frobnicate
+  [ "$status" -eq 2 ]
+  [ ! -f "$(check_state)" ]
 }

@@ -68,6 +68,13 @@ bundle_path() {
   [ "$status" -eq 2 ]
 }
 
+@test "spec-named layer flags are rejected, not silently swallowed" {
+  run_devseed export --only dotfiles
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"--only-categories"* ]]
+  [ ! -d "$DEVSEED_ROOT/bundles" ] || [ -z "$(bundle_path)" ] # no full bundle written
+}
+
 @test "manifest is deterministic across exports" {
   run_devseed export --output "$BATS_TEST_TMPDIR/a.tar.gz"
   run_devseed export --output "$BATS_TEST_TMPDIR/b.tar.gz"

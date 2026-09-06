@@ -55,6 +55,8 @@ config_tree_hash() {
 }
 
 @test "defaults drift kinds: differs, unset-in-config, unset-on-machine" {
+  printf 'com.a\tk1\tint\ncom.a\tk2\tint\ncom.a\tk3\tint\n' \
+    >"$DEVSEED_ROOT/config/defaults/allowlist.tsv"
   printf 'com.a\tk1\tint\t5\ncom.a\tk2\tint\t<unset>\ncom.a\tk3\tint\t9\n' \
     >"$DEVSEED_ROOT/config/defaults/values.tsv"
   # machine: k1=7 (differs), k2=4 (unset-in-config), k3 absent (unset-on-machine)

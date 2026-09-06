@@ -32,6 +32,7 @@ fail() {
 # consume the script itself). Non-interactive: auto-yes. NB: probe that
 # /dev/tty can actually be OPENED — on CI runners it exists but opening it
 # fails with "Device not configured".
+# TWIN: standalone copy of lib/common.sh confirm() (defaults differ: Y/n).
 ask() {
   local reply=""
   if [ ! -t 0 ] && ! (: </dev/tty) 2>/dev/null; then
@@ -49,6 +50,8 @@ ask() {
   esac
 }
 
+# TWIN: standalone copy of lib/bootstrap.sh ensure_clt() — keep the
+# softwareupdate label parsing (incl. sort -V) in sync by hand.
 ensure_clt() {
   if xcode-select -p >/dev/null 2>&1; then
     say "Xcode Command Line Tools present"
@@ -107,6 +110,7 @@ link_bin() {
   esac
 }
 
+# TWIN: standalone copy of lib/capture.sh bootstrap_user_config().
 seed_config() {
   if [ -d "$DEVSEED_ROOT/config" ]; then
     say "config already present at $DEVSEED_ROOT/config"

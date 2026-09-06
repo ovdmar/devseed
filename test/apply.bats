@@ -97,8 +97,10 @@ teardown() { common_teardown; }
   [ "$(find "$DEVSEED_ROOT/backups" -type d -mindepth 1 -maxdepth 1 | wc -l)" -eq "$count_before" ]
 }
 
-@test "defaults: write only on mismatch, typed flags, restart-map killall" {
-  printf 'com.a\tk1\tint\t5\ncom.a\tk2\tbool\ttrue\ncom.b\tk3\tint\t<unset>\n' \
+@test "defaults: write only on mismatch, typed flags, restart-map killall, allowlist enforced" {
+  printf 'com.a\tk1\tint\ncom.a\tk2\tbool\ncom.b\tk3\tint\n' \
+    >"$DEVSEED_ROOT/config/defaults/allowlist.tsv"
+  printf 'com.a\tk1\tint\t5\ncom.a\tk2\tbool\ttrue\ncom.b\tk3\tint\t<unset>\ncom.evil\tsmuggled\tint\t666\n' \
     >"$DEVSEED_ROOT/config/defaults/values.tsv"
   printf 'com.a\tFakeApp\ncom.b\t-\n' >"$DEVSEED_ROOT/config/defaults/restart-map.tsv"
   # machine: k1=7 (mismatch), k2=true (match), k3 absent (sentinel: skip)
@@ -115,7 +117,29 @@ esac'
   grep -q "defaults write com.a k1 -int 5" "$STUB_LOG"
   ! grep -q "defaults write com.a k2" "$STUB_LOG"
   ! grep -q "defaults write com.b" "$STUB_LOG"
+  ! grep -q "defaults write com.evil" "$STUB_LOG" # Annex A.6: not allowlisted
+  [[ "$output" == *"com.evil smuggled is not in the allowlist"* ]]
   grep -q "killall FakeApp" "$STUB_LOG"
+}
+
+@test "defaults: previous value backed up and restorable (R2)" {
+  printf 'com.a\tk1\tint\n' >"$DEVSEED_ROOT/config/defaults/allowlist.tsv"
+  printf 'com.a\tk1\tint\t5\n' >"$DEVSEED_ROOT/config/defaults/values.tsv"
+  printf 'com.a\t-\n' >"$DEVSEED_ROOT/config/defaults/restart-map.tsv"
+  make_stub defaults 'case "$1 $3" in
+"read-type k1") echo "Type is integer";;
+"read k1") echo 7;;
+"write k1") ;;
+*) echo "does not exist" >&2; exit 1;;
+esac'
+  run_devseed apply --only defaults
+  [ "$status" -eq 0 ]
+  manifest="$(find "$DEVSEED_ROOT/backups" -name manifest.txt | head -n 1)"
+  grep -q "$(printf 'defaults\tcom.a\tk1\tint\t7')" "$manifest"
+
+  run_devseed restore
+  [ "$status" -eq 0 ]
+  grep -q "defaults write com.a k1 -int 7" "$STUB_LOG"
 }
 
 @test "restore round-trip from an apply backup" {

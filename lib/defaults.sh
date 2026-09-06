@@ -1,6 +1,6 @@
 #!/bin/bash
 # defaults.sh — macOS defaults layer (key-level allowlist, Annex A.6).
-# diff lands in M2, apply in M3.
+
 # Scalar-only in v1: capture refuses array/dict/data (exit 2, naming the
 # key); booleans normalized to true/false; absent keys recorded as <unset>
 # (apply skips them).
@@ -8,13 +8,15 @@
 # apply_defaults — typed compare, write only on mismatch, <unset> skipped,
 # app restarts per restart-map for touched domains.
 apply_defaults() {
-  local domain key dtype want actual have flag touched="" app
+  local domain key dtype want actual have had flag touched="" app ts="" bdir=""
   while IFS="$(printf '\t')" read -r domain key dtype want; do
     [ -n "$domain" ] || continue
     [ "$want" = "<unset>" ] && continue
     have=""
+    had=0
     if actual="$(defaults read-type "$domain" "$key" 2>/dev/null)"; then
       actual="${actual#Type is }"
+      had=1
       have="$(defaults read "$domain" "$key" 2>/dev/null || true)"
       if [ "$dtype" = "bool" ] || [ "$actual" = "boolean" ]; then
         have="$(defaults_normalize_bool "$have")"
@@ -27,6 +29,20 @@ apply_defaults() {
       float) flag="-float" ;;
       *) flag="-string" ;;
     esac
+    # R2: never overwrite live state without a backup — record the previous
+    # value (or <unset>) so `devseed restore` can put it back.
+    if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
+      if [ -z "$bdir" ]; then
+        ts="$(utc_ts)"
+        bdir="$(backups_dir)/$ts"
+        mkdir -p "$bdir"
+      fi
+      if [ "$had" = "1" ]; then
+        printf 'defaults\t%s\t%s\t%s\t%s\n' "$domain" "$key" "$dtype" "$have" >>"$bdir/manifest.txt"
+      else
+        printf 'defaults\t%s\t%s\t%s\t%s\n' "$domain" "$key" "$dtype" "<unset>" >>"$bdir/manifest.txt"
+      fi
+    fi
     run_cmd defaults write "$domain" "$key" "$flag" "$want"
     case " $touched " in
       *" $domain "*) ;;
@@ -35,6 +51,7 @@ apply_defaults() {
   done <<EOF
 $(merged_defaults_rows)
 EOF
+  [ -n "$bdir" ] && log "defaults: previous values recorded in $bdir (devseed restore $ts)"
 
   for domain in $touched; do
     app="$(tsv_rows "$(config_dir)/defaults/restart-map.tsv" |
@@ -46,20 +63,43 @@ EOF
   return 0
 }
 
+# merged_allowlist_rows — base allowlist plus overlay additions: the
+# key-level contract (Annex A.6) every read AND write is checked against.
+merged_allowlist_rows() {
+  tsv_rows "$(config_dir)/defaults/allowlist.tsv"
+  if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
+    tsv_rows "$DEVSEED_OVERLAY_DIR/defaults/allowlist.tsv"
+  fi
+}
+
+# defaults_key_allowlisted DOMAIN KEY — Annex A.6 enforcement: profile or
+# overlay rows cannot smuggle writes to unlisted keys.
+defaults_key_allowlisted() {
+  merged_allowlist_rows |
+    awk -F '\t' -v d="$1" -v k="$2" '$1 == d && $2 == k { found = 1; exit } END { exit !found }'
+}
+
 # merged_defaults_rows — the effective desired defaults: base values.tsv,
 # then the active profile's defaults.tsv, then the overlay's values.tsv —
-# later files win per domain+key. Emitted sorted.
+# later files win per domain+key; rows for keys outside the merged
+# allowlist are dropped with a warning. Emitted sorted.
 merged_defaults_rows() {
+  local domain key rest
   {
     tsv_rows "$(config_dir)/defaults/values.tsv"
     tsv_rows "$(config_dir)/profiles/$(resolve_profile)/defaults.tsv"
     if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
       tsv_rows "$DEVSEED_OVERLAY_DIR/defaults/values.tsv"
     fi
-  } | awk -F '\t' '
-    { k = $1 "\t" $2; row[k] = $0; if (!(k in seen)) { order[++n] = k; seen[k] = 1 } }
-    END { for (i = 1; i <= n; i++) print row[order[i]] }
-  ' | LC_ALL=C sort
+  } | tsv_last_wins 1 2 | LC_ALL=C sort |
+    while IFS="$(printf '\t')" read -r domain key rest; do
+      [ -n "$domain" ] || continue
+      if defaults_key_allowlisted "$domain" "$key"; then
+        printf '%s\t%s\t%s\n' "$domain" "$key" "$rest"
+      else
+        log_warn "defaults: $domain $key is not in the allowlist; ignoring its row (Annex A.6)"
+      fi
+    done
 }
 
 # diff_defaults — compare the merged desired values against the machine,

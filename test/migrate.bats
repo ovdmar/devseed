@@ -104,6 +104,14 @@ valid_bundle_with() {
   [ ! -e "$BATS_TEST_TMPDIR/escaped" ]
 }
 
+@test "hostile: non-numeric mode -> exit 2, nothing placed" {
+  b="$(valid_bundle_with .zshrc 'carried' 'u+s,go-w')"
+  run_devseed apply --from "$b" --only defaults
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"non-numeric mode"* ]]
+  [ ! -f "$DEVSEED_TARGET/.zshrc" ]
+}
+
 @test "hostile: absolute path -> exit 2" {
   dir="$BATS_TEST_TMPDIR/evil2"
   mkdir -p "$dir/payload/dotfiles"

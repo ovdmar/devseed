@@ -134,21 +134,27 @@ parse_global_flags() {
     DEVSEED_OVERLAY_FLAG
 }
 
-# layer_selected LAYER — true when LAYER passes --only/--except.
-layer_selected() {
-  local layer="$1" item
-  if [ -n "$DEVSEED_ONLY" ]; then
-    for item in $(printf '%s' "$DEVSEED_ONLY" | tr ',' ' '); do
-      [ "$item" = "$layer" ] && return 0
+# csv_selected ITEM ONLY_LIST EXCEPT_LIST — comma-list include/exclude
+# membership test shared by layer and category selection.
+csv_selected() {
+  local want="$1" only="$2" except="$3" item
+  if [ -n "$only" ]; then
+    for item in $(printf '%s' "$only" | tr ',' ' '); do
+      [ "$item" = "$want" ] && return 0
     done
     return 1
   fi
-  if [ -n "$DEVSEED_EXCEPT" ]; then
-    for item in $(printf '%s' "$DEVSEED_EXCEPT" | tr ',' ' '); do
-      [ "$item" = "$layer" ] && return 1
+  if [ -n "$except" ]; then
+    for item in $(printf '%s' "$except" | tr ',' ' '); do
+      [ "$item" = "$want" ] && return 1
     done
   fi
   return 0
+}
+
+# layer_selected LAYER — true when LAYER passes --only/--except.
+layer_selected() {
+  csv_selected "$1" "$DEVSEED_ONLY" "$DEVSEED_EXCEPT"
 }
 
 # ---------- path / config resolution ----------
@@ -202,14 +208,23 @@ setting_get() {
   echo "$default"
 }
 
-# check_format_version — 0 ok, 1 missing (warning), 2 incompatible.
+# check_format_version — 0 ok, 1 missing (warning), 2 incompatible or
+# unreadable. A non-numeric version is a hard failure, never silently
+# treated as compatible: this is the one field whose readability the
+# engine's refusal guarantee depends on.
 check_format_version() {
   local v
   v="$(format_version || true)"
   if [ -z "$v" ]; then
     return 1
   fi
-  if [ "$v" -gt "$DEVSEED_FORMAT_VERSION" ] 2>/dev/null; then
+  case "$v" in
+    *[!0-9]*)
+      log_error "config format.version='$v' is not a number; refusing to guess compatibility"
+      return 2
+      ;;
+  esac
+  if [ "$v" -gt "$DEVSEED_FORMAT_VERSION" ]; then
     log_error "config format.version=$v is newer than this engine supports ($DEVSEED_FORMAT_VERSION); run 'devseed update'"
     return 2
   fi
@@ -222,6 +237,34 @@ check_format_version() {
 tsv_rows() {
   [ -f "$1" ] || return 0
   grep -v '^[[:space:]]*#' "$1" | grep -v '^[[:space:]]*$' || true
+}
+
+# tsv_last_wins FIELD... — stdin filter: rows keyed by the given tab field
+# numbers; the LAST row per key wins, first-seen order preserved. This is
+# the overlay-precedence rule, defined once.
+tsv_last_wins() {
+  awk -F '\t' -v fields="$*" '
+    BEGIN { split(fields, F, " ") }
+    {
+      k = ""
+      for (i in F) k = k "\t" $F[i]
+      row[k] = $0
+      if (!(k in seen)) { order[++n] = k; seen[k] = 1 }
+    }
+    END { for (i = 1; i <= n; i++) print row[order[i]] }
+  '
+}
+
+# backup_target_file BDIR REL — copy the live target file into the backup
+# set with the manifest line cmd_restore consumes. The single writer of the
+# `target/<rel>` manifest format.
+backup_target_file() {
+  local bdir="$1" rel="$2"
+  run_cmd mkdir -p "$bdir/target/$(dirname "$rel")"
+  run_cmd cp -p "$(target_path "$rel")" "$bdir/target/$rel"
+  if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
+    printf 'target/%s\n' "$rel" >>"$bdir/manifest.txt"
+  fi
 }
 
 # tsv_well_formed FILE MIN_COLS — every data row has at least MIN_COLS

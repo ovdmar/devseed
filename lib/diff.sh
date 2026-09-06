@@ -1,7 +1,10 @@
 #!/bin/bash
 # diff.sh — cmd_diff: the read-only drift report (D2). Strictly
-# non-mutating: never installs anything, never writes config or machine
-# state. Exit 0 clean / 1 drift / 2 error / 3 unmeasurable-or-incomplete
+# non-mutating toward the config and the target machine: it never installs
+# anything and never writes either. (devseed's own bookkeeping under
+# ~/.devseed/state — the chezmoi isolation files and the update-check
+# cache — is the sole, deliberate exception.)
+# Exit 0 clean / 1 drift / 2 error / 3 unmeasurable-or-incomplete
 # (3 wins over 1: an unmeasured layer means the answer can't be trusted).
 
 cmd_diff() {

@@ -50,6 +50,11 @@ merge_bundle() {
     case "/$rel/" in
       */../*) die "bundle rejected: '..' component in manifest path: $rel" 2 ;;
     esac
+    case "$mode" in
+      '' | *[!0-9]*)
+        die "bundle rejected: non-numeric mode '$mode' for $cat/$rel" 2
+        ;;
+    esac
     [ -f "$staging/payload/$cat/$rel" ] ||
       die "bundle rejected: manifest entry with no payload: $cat/$rel" 2
     if [ "$(shasum -a 256 "$staging/payload/$cat/$rel" | awk '{print $1}')" != "$sha" ]; then
@@ -74,7 +79,7 @@ EOF
     if ! bundle_dest_contained "$rel"; then
       die "bundle rejected: $rel escapes the target through a symlinked parent" 2
     fi
-    if [ "$cat" = "secrets" ] && [ "$mode" -gt 600 ] 2>/dev/null; then
+    if [ "$cat" = "secrets" ] && [ "$mode" -gt 600 ]; then
       mode=600
     fi
     dest="$(target_path "$rel")"
@@ -94,11 +99,7 @@ EOF
         st=3
         continue
       fi
-      run_cmd mkdir -p "$bdir/target/$(dirname "$rel")"
-      run_cmd cp -p "$dest" "$bdir/target/$rel"
-      if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
-        printf 'target/%s\n' "$rel" >>"$bdir/manifest.txt"
-      fi
+      backup_target_file "$bdir" "$rel"
     fi
     run_cmd mkdir -p "$(dirname "$dest")"
     run_cmd cp "$staging/payload/$cat/$rel" "$dest"

@@ -85,9 +85,16 @@ resolve_overlay() {
       confirm "allow overlay '$name' to run its hooks/post-apply.sh after every apply?"; then
       hooks="yes"
     fi
-    mkdir -p "$(state_dir)"
-    printf '%s\t%s\t%s\t%s\n' "$name" "$src" "$hooks" "$(utc_ts)" >>"$(overlay_registry)"
-    log "registered overlay $name (hooks: $hooks)"
+    # Registration persists TRUST (including the hook opt-in) — it must
+    # honor --dry-run like every other mutation.
+    if [ "${DEVSEED_DRY_RUN:-0}" = "1" ]; then
+      printf 'DRY-RUN: register overlay %s (%s, hooks: %s) in %s\n' \
+        "$name" "$src" "$hooks" "$(overlay_registry)"
+    else
+      mkdir -p "$(state_dir)"
+      printf '%s\t%s\t%s\t%s\n' "$name" "$src" "$hooks" "$(utc_ts)" >>"$(overlay_registry)"
+      log "registered overlay $name (hooks: $hooks)"
+    fi
   fi
 
   DEVSEED_OVERLAY_DIR="$dir"

@@ -1,10 +1,13 @@
 #!/bin/bash
 # restore.sh — cmd_restore: manifest-driven restore from a backup set.
-# Manifest lines are `target/<rel>` (pre-apply dotfile backups) or
-# `config/<rel>` (pre-prune config snapshots).
+# Manifest lines are `target/<rel>` (pre-apply dotfile backups),
+# `config/<rel>` (pre-prune config snapshots), or
+# `defaults<TAB>domain<TAB>key<TAB>type<TAB>previous-value` (pre-write
+# defaults values; <unset> restores by deleting the key).
 
 cmd_restore() {
-  local ts="" line src dest bdir n=0
+  local ts="" line src dest bdir n=0 tab domain key dtype prev flag
+  tab="$(printf '\t')"
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -34,6 +37,24 @@ cmd_restore() {
     [ -n "$line" ] || continue
     src="$bdir/$line"
     case "$line" in
+      "defaults${tab}"*)
+        IFS="$tab" read -r _ domain key dtype prev <<EOF2
+$line
+EOF2
+        if [ "$prev" = "<unset>" ]; then
+          run_cmd defaults delete "$domain" "$key" || true
+        else
+          case "$dtype" in
+            bool) flag="-bool" ;;
+            int) flag="-int" ;;
+            float) flag="-float" ;;
+            *) flag="-string" ;;
+          esac
+          run_cmd defaults write "$domain" "$key" "$flag" "$prev"
+        fi
+        n=$((n + 1))
+        continue
+        ;;
       target/*) dest="$(target_path "${line#target/}")" ;;
       config/*) dest="$DEVSEED_ROOT/config/${line#config/}" ;;
       *)

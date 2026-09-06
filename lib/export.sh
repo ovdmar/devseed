@@ -12,19 +12,7 @@
 
 # category_selected CAT — --only-categories/--except-categories filter.
 category_selected() {
-  local cat="$1" item
-  if [ -n "${DEVSEED_ONLY_CATS:-}" ]; then
-    for item in $(printf '%s' "$DEVSEED_ONLY_CATS" | tr ',' ' '); do
-      [ "$item" = "$cat" ] && return 0
-    done
-    return 1
-  fi
-  if [ -n "${DEVSEED_EXCEPT_CATS:-}" ]; then
-    for item in $(printf '%s' "$DEVSEED_EXCEPT_CATS" | tr ',' ' '); do
-      [ "$item" = "$cat" ] && return 1
-    done
-  fi
-  return 0
+  csv_selected "$1" "${DEVSEED_ONLY_CATS:-}" "${DEVSEED_EXCEPT_CATS:-}"
 }
 
 # expand_category_globs LISTFILE — emit target-relative file paths matched
@@ -64,6 +52,13 @@ EOF
 cmd_export() {
   local include_secrets=0 output="" cat list rel sha mode work n=0
   local secrets_listed=""
+
+  # Export has no layers: the global --only/--except (layer) flags would
+  # otherwise be silently consumed and a FULL bundle written for a user who
+  # meant categories.
+  if [ -n "${DEVSEED_ONLY:-}" ] || [ -n "${DEVSEED_EXCEPT:-}" ]; then
+    die "export selects categories, not layers: use --only-categories/--except-categories" 2
+  fi
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -151,6 +146,7 @@ EOF
     printf 'macos\t%s\n' "$(sw_vers -productVersion 2>/dev/null || echo unknown)"
     printf 'arch\t%s\n' "$(uname -m)"
     printf 'host\t%s\n' "$(hostname -s)"
+    printf 'created\t%s\n' "$(utc_ts)"
     printf 'encryption\tnone\n'
   } >"$work/meta/info.tsv"
 
@@ -161,9 +157,9 @@ EOF
     return 0
   fi
 
-  mkdir -p "$(dirname "$output")"
-  tar -czf "$output" -C "$work" meta manifest.tsv payload
-  chmod 600 "$output"
+  run_cmd mkdir -p "$(dirname "$output")"
+  run_cmd tar -czf "$output" -C "$work" meta manifest.tsv payload
+  run_cmd chmod 600 "$output"
   rm -rf "$work"
 
   if [ -n "$secrets_listed" ]; then

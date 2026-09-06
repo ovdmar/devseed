@@ -1,7 +1,7 @@
 #!/bin/bash
 # curl_tools.sh — pinned, sha256-verified curl-installed tools.
-# diff lands in M2, full apply in M3; install_curl_tool is used by
-# ensure_chezmoi (M1) already.
+# install_curl_tool is shared by
+# ensure_chezmoi and apply_curl_tools.
 
 # apply_curl_tools — install declared tools (this arch) that are missing.
 apply_curl_tools() {
@@ -27,10 +27,7 @@ merged_curl_rows() {
     if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
       tsv_rows "$DEVSEED_OVERLAY_DIR/curl-tools.tsv"
     fi
-  } | awk -F '\t' '
-    { k = $1 "\t" $3; row[k] = $0; if (!(k in seen)) { order[++n] = k; seen[k] = 1 } }
-    END { for (i = 1; i <= n; i++) print row[order[i]] }
-  '
+  } | tsv_last_wins 1 3
 }
 
 # diff_curl_tools — declared tools (this arch) present on the machine?

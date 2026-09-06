@@ -1,5 +1,5 @@
 #!/bin/bash
-# dotfiles.sh — chezmoi-backed dotfiles layer. diff lands in M2, apply in M3.
+# dotfiles.sh — chezmoi-backed dotfiles layer: apply/diff/capture/adopt.
 #
 # chezmoi_cmd is the ONLY place chezmoi may be invoked (enforced by
 # `make lint`): it pins --source/--destination/--config and routes
@@ -42,11 +42,7 @@ apply_dotfiles() {
     rel="${line#??}"
     rel="${rel# }"
     [ -f "$(target_path "$rel")" ] || continue
-    run_cmd mkdir -p "$bdir/target/$(dirname "$rel")"
-    run_cmd cp -p "$(target_path "$rel")" "$bdir/target/$rel"
-    if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
-      printf 'target/%s\n' "$rel" >>"$bdir/manifest.txt"
-    fi
+    backup_target_file "$bdir" "$rel"
     backed=$((backed + 1))
   done <<EOF
 $status_out
@@ -114,33 +110,33 @@ write_chezmoi_config() {
   echo "$f"
 }
 
-chezmoi_cmd() {
-  local cm
+# _chezmoi_run SOURCE STATE_SUBDIR ARGS... — the single chezmoi invocation
+# site: pinned source/destination/config, persistent state + cache under
+# devseed's own state dir. Both public wrappers delegate here so the
+# "one place invokes chezmoi" invariant holds by construction.
+_chezmoi_run() {
+  local src="$1" sub="$2" cm
+  shift 2
   cm="$(chezmoi_bin)" || die "chezmoi not available (capture/apply install it)" 2
-  mkdir -p "$(state_dir)/chezmoi"
+  mkdir -p "$(state_dir)/$sub"
   "$cm" \
-    --source "$(config_dir)/chezmoi" \
+    --source "$src" \
     --destination "$DEVSEED_TARGET" \
     --config "$(write_chezmoi_config)" \
-    --persistent-state "$(state_dir)/chezmoi/chezmoistate.boltdb" \
-    --cache "$(state_dir)/chezmoi/cache" \
+    --persistent-state "$(state_dir)/$sub/chezmoistate.boltdb" \
+    --cache "$(state_dir)/$sub/cache" \
     "$@"
+}
+
+chezmoi_cmd() {
+  _chezmoi_run "$(config_dir)/chezmoi" chezmoi "$@"
 }
 
 # overlay_chezmoi_cmd — the overlay's ISOLATED second pass: its own source
 # dir and its own persistent state/cache (chezmoi cannot merge two source
 # dirs; two isolated passes with enforced disjointness is predictable).
 overlay_chezmoi_cmd() {
-  local cm
-  cm="$(chezmoi_bin)" || die "chezmoi not available" 2
-  mkdir -p "$(state_dir)/chezmoi-overlay"
-  "$cm" \
-    --source "$DEVSEED_OVERLAY_DIR/chezmoi" \
-    --destination "$DEVSEED_TARGET" \
-    --config "$(write_chezmoi_config)" \
-    --persistent-state "$(state_dir)/chezmoi-overlay/chezmoistate.boltdb" \
-    --cache "$(state_dir)/chezmoi-overlay/cache" \
-    "$@"
+  _chezmoi_run "$DEVSEED_OVERLAY_DIR/chezmoi" chezmoi-overlay "$@"
 }
 
 overlay_dotfiles_active() {
@@ -191,7 +187,11 @@ candidate_filter_reason() {
     esac
   fi
   if [ -f "$abs" ]; then
-    size="$(stat -f '%z' "$abs" 2>/dev/null || echo 0)"
+    if ! size="$(stat -f '%z' "$abs" 2>/dev/null)"; then
+      # A failed measurement must refuse, not default to "fine to adopt".
+      echo "could not stat"
+      return 0
+    fi
     if [ "$size" -gt 1048576 ]; then
       echo "file larger than 1MB"
       return 0
@@ -224,7 +224,14 @@ regen_chezmoiignore() {
   fi
   {
     printf '%s\n' "$begin"
-    tsv_rows "$(config_dir)/exclusions.txt" | LC_ALL=C sort
+    {
+      tsv_rows "$(config_dir)/exclusions.txt"
+      # Overlay exclusions are additive and must reach chezmoi's own
+      # enforcement, not just is_excluded().
+      if [ -n "${DEVSEED_OVERLAY_DIR:-}" ]; then
+        tsv_rows "$DEVSEED_OVERLAY_DIR/exclusions.txt"
+      fi
+    } | LC_ALL=C sort -u
     printf '%s\n' "$end"
   } >>"$tmp"
   run_cmd mkdir -p "$src"
@@ -304,7 +311,13 @@ capture_dotfiles() {
 
   regen_chezmoiignore
   managed="$(chezmoi_cmd managed --include files 2>/dev/null || true)"
-  if [ -n "$managed" ]; then
+  # Overlay-managed paths must never be suggested for base adoption — that
+  # collision would abort the next apply (disjointness preflight).
+  if overlay_dotfiles_active; then
+    managed="$managed
+$(overlay_chezmoi_cmd managed --include files 2>/dev/null || true)"
+  fi
+  if [ -n "$(chezmoi_cmd managed --include files 2>/dev/null || true)" ]; then
     run_cmd chezmoi_cmd re-add
   fi
 

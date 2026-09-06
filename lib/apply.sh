@@ -16,12 +16,14 @@ cmd_apply() {
         ;;
       --only-categories)
         [ "$#" -ge 2 ] || die "--only-categories requires a value" 2
+        [ -z "${DEVSEED_EXCEPT_CATS:-}" ] || die "--only-categories and --except-categories are mutually exclusive" 2
         # shellcheck disable=SC2034 # read by category_selected (lib/export.sh)
         DEVSEED_ONLY_CATS="$2"
         shift 2
         ;;
       --except-categories)
         [ "$#" -ge 2 ] || die "--except-categories requires a value" 2
+        [ -z "${DEVSEED_ONLY_CATS:-}" ] || die "--only-categories and --except-categories are mutually exclusive" 2
         # shellcheck disable=SC2034 # read by category_selected (lib/export.sh)
         DEVSEED_EXCEPT_CATS="$2"
         shift 2

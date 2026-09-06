@@ -7,3 +7,6 @@ format.version	1
 # formulae/casks/taps/mas. Comma-separated from: vscode,go,npm,cargo.
 # Absent/commented = all off (see vision.md ADR-5 for why vscode is opt-in).
 # To enable, add a row like:  brew.dump_categories<TAB>vscode
+#
+# update.check: the before-command newer-version warning. Absent/on by
+# default; disable with:  update.check<TAB>off

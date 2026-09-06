@@ -1,6 +1,7 @@
 #!/bin/bash
 # profiles.sh — profile resolution and per-profile chezmoi config.
-# Full profile application (Brewfile fragments, defaults overrides) lands in M3.
+# Profile application: Brewfile fragments (lib/brew.sh) and defaults
+# overrides (lib/defaults.sh) key off resolve_profile below.
 
 # resolve_profile — flag > DEVSEED_PROFILE env > persisted state > default.
 resolve_profile() {

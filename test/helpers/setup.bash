@@ -33,6 +33,10 @@ common_setup() {
   # apps — both live in /usr/bin, inside the restricted PATH).
   make_stub curl 'echo "test-guard: unstubbed curl invoked" >&2; exit 86'
   make_stub killall 'echo "test-guard: unstubbed killall invoked" >&2; exit 86'
+  # The update check performs a network git operation; suites must opt in
+  # explicitly (test/update.bats) so unrelated tests never probe.
+  DEVSEED_NO_UPDATE_CHECK=1
+  export DEVSEED_NO_UPDATE_CHECK
   _chezmoi_state_snapshot="$(_real_chezmoi_mtimes)"
 }
 

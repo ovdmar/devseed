@@ -21,6 +21,8 @@ setup() {
   mkdir -p "$OVERLAY/defaults" "$OVERLAY/chezmoi" "$OVERLAY/hooks"
   printf 'brew "corp-tool"\n' >"$OVERLAY/Brewfile"
   printf 'com.a\tk1\tint\t9\n' >"$OVERLAY/defaults/values.tsv"
+  # com.a is allowlisted by the OVERLAY only, exercising merged allowlists
+  printf 'com.a\tk1\tint\n' >"$OVERLAY/defaults/allowlist.tsv"
   printf '.config/corp-secret/**\n' >"$OVERLAY/exclusions.txt"
   printf 'corp\n' >"$OVERLAY/chezmoi/dot_corprc"
   printf '#!/bin/bash\necho hook-ran > "%s/hook-marker"\n' "$BATS_TEST_TMPDIR" \

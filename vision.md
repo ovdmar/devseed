@@ -61,7 +61,7 @@ Principles:
 ## 5. Architecture
 
 ### 5.1 Stack
-- Entrypoint: `devseed`, a zero-dependency POSIX shell script. Bootstraps CLT, Homebrew, and a static `chezmoi` binary, then delegates. Optionally repackaged later as a notarized universal binary or `.pkg` for MDM.
+- Entrypoint: `devseed`, a zero-dependency shell script (bash 3.2, always present on macOS). Bootstraps CLT, Homebrew, and a static `chezmoi` binary, then delegates. Optionally repackaged later as a notarized universal binary or `.pkg` for MDM.
 - Orchestrator: `chezmoi`. Owns dotfiles, per-profile templating, secret resolution, and `run_once` scripts that install CLT check, Homebrew, and apply the Brewfile.
 - Packages: `Brewfile` per layer via `brew bundle`.
 - macOS settings: `defaults` scripts scoped to an allowlist of preference domains (see Annex A.6).
@@ -125,16 +125,16 @@ Updated as each milestone lands; finalized at v0.1.0.
 | Req | Capability | Status | Rationale / notes |
 |---|---|---|---|
 | R1 | Zero-prereq entrypoint, MDM-runnable | Done* | `install.sh` + `devseed apply` bootstrap CLT, Homebrew, chezmoi. *Stock-Mac VM E2E still to be run manually before v0.1.0 |
-| R2 | Idempotent; backup before overwrite; `--force` | Done | backups + `devseed restore`; first-apply confirm gate; CI asserts re-apply no-ops |
+| R2 | Idempotent; backup before overwrite; `--force` | Done | backups (dotfiles, bundle merges, defaults values) + `devseed restore`; the clobber gate accepts --force OR an interactive first-apply confirm, and applies to the machine's first apply only |
 | R3 | brew formulae/casks | Done | `brew bundle` (check fast path, `--no-upgrade`) |
 | R3 | Mac App Store apps | Done | `mas` via brew bundle; receipt-census reconciliation — an unmeasured/incomplete layer exits 3, never a silent clean |
 | R3 | Editor extensions | Opt-in (ADR-5) | default-off `brew.dump_categories` category; apply skips with a report when no editor present |
-| R3 | curl-installed tools | Done | declared + sha256-checksummed (chezmoi itself is row #1) |
-| R3 | GUI apps (drag-installed) | Won't-do (v1) | suggest-only report in capture; not declaratively applied |
+| R3 | curl-installed tools | Partial | apply/diff of the declared, sha256-checksummed list (chezmoi itself is row #1); §5.4's capture-side history/PATH candidate discovery is deferred |
+| R3 | GUI apps (drag-installed) | Won't-do (v1) | neither captured nor applied in v1 |
 | R3 | macOS defaults | Done | Annex A.6: key-level allowlist, scalar-only, `<unset>` sentinel |
 | R3 | Dotfiles | Done | chezmoi, fully isolated state; recursive exclusions |
 | R4 | Profiles; company overlay; unattended mode | Done | overlay hooks gated by one-time registration; unattended never prompts, exit 3 for skipped layers |
-| R5 | Selective migration, per-category | Done | `--only-categories`/`--except-categories`; `--include-secrets` gates the secrets tier |
+| R5 | Selective migration, per-category | Done | `--only-categories`/`--except-categories`; `--include-secrets` gates the secrets tier; shell-history exports only when named in --only-categories |
 | R5 | Encrypted transport by default | Deferred (ADR-3) | plain tar + file hygiene (0600, umask 077); `encryption=none` seam recorded in bundle meta |
 | R6 | Capture + drift check exiting non-zero | Done | realized as `devseed diff`; `capture --check` kept as alias; exit 1 drift / 3 unmeasurable |
 | R7 | Secrets never in config; references only | Partial (ADR-4) | exclusion list + flag-gated port-once; secret-manager backends deferred |

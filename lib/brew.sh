@@ -1,6 +1,6 @@
 #!/bin/bash
-# brew.sh — Brewfile layer: normalize/merge and capture. diff lands in M2,
-# apply in M3.
+# brew.sh — Brewfile layer: apply/diff/capture plus the normalize/merge
+# helpers that keep the Brewfile canonical.
 # All read paths set the no-auto-update env and keep parsed stdout separate
 # from stderr; `diff` must work offline.
 

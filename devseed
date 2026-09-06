@@ -78,6 +78,14 @@ Global flags:
   --verbose      More logging
 
 Exit codes: 0 ok/no drift, 1 drift, 2 error, 3 refused or partial.
+(doctor: 0 healthy, 1 warnings — e.g. a fresh machine — 2 broken.)
+
+Before each real command devseed warns (stderr) when a newer version
+exists upstream; disable with DEVSEED_NO_UPDATE_CHECK=1 or a
+'update.check<TAB>off' row in settings.tsv.
+
+Export notes: bundles are plain tar (0600, ~/.devseed/bundles); the
+shell-history category is exported only when named in --only-categories.
 EOF
 }
 

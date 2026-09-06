@@ -1,8 +1,8 @@
 #!/bin/bash
 # bootstrap.sh — ensure_* installers. Called ONLY from capture and apply
 # (never from diff, which is strictly non-mutating).
-# ensure_clt/ensure_homebrew land in M3; install.sh carries its own CLT
-# bootstrap so it stays standalone.
+# install.sh carries its own standalone copy of the CLT
+# bootstrap (kept in sync by hand — see the twin-pointer comments).
 
 # ensure_clt — headless Xcode Command Line Tools install. Returns 1 (no die)
 # when it cannot install so cmd_apply can decide whether that is fatal.
@@ -15,23 +15,31 @@ ensure_clt() {
     log_warn "cannot install Command Line Tools unattended without sudo; skipping"
     return 1
   fi
+  if [ "${DEVSEED_DRY_RUN:-0}" = "1" ]; then
+    # A dry run must not query softwareupdate or touch/delete the shared
+    # /tmp trigger a concurrent `xcode-select --install` may rely on.
+    printf 'DRY-RUN: install Xcode Command Line Tools (headless via softwareupdate)\n'
+    return 0
+  fi
   log "installing Xcode Command Line Tools (headless; this can take a while)..."
   trigger="/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress"
   run_cmd touch "$trigger"
+  # sort -V: label list must pick the NEWEST CLT package, not the
+  # lexicographically last (kept in sync with install.sh's twin copy).
   label="$(softwareupdate -l 2>/dev/null |
     grep -o 'Label: Command Line Tools for Xcode-[0-9.]*' |
-    sed 's/^Label: //' | sort | tail -n 1)"
+    sed 's/^Label: //' | sort -V | tail -n 1)"
   if [ -z "$label" ]; then
-    rm -f "$trigger"
+    run_cmd rm -f "$trigger"
     log_warn "no Command Line Tools package found via softwareupdate; run 'xcode-select --install' manually"
     return 1
   fi
   run_cmd softwareupdate -i "$label" || {
-    rm -f "$trigger"
+    run_cmd rm -f "$trigger"
     return 1
   }
-  rm -f "$trigger"
-  [ "${DEVSEED_DRY_RUN:-0}" = "1" ] || xcode-select -p >/dev/null 2>&1
+  run_cmd rm -f "$trigger"
+  xcode-select -p >/dev/null 2>&1
 }
 
 # ensure_homebrew — official installer, non-interactive; loads brew into

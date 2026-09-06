@@ -1,7 +1,7 @@
 #!/bin/bash
 # capture.sh — cmd_capture orchestration: config bootstrap, --add, --prune
 # (snapshot + clean-git-worktree gate), layer dispatch, summary line.
-# --check is an alias for `devseed diff` (M2).
+# --check is an alias for `devseed diff`.
 
 # bootstrap_user_config — create ~/.devseed/config from the example on first
 # capture. devseed never runs git for the user; it prints the hint.

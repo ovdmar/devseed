@@ -5,18 +5,27 @@
 # update_check: runs before every real command and warns (stderr) when a
 # newer version exists upstream. Cached in state/update-check with a 24h
 # re-check cadence, so at most one network round-trip per day; a cached
-# "newer" verdict keeps warning without any network. Offline or failed
-# checks are silent. Skipped in dev mode, with DEVSEED_NO_UPDATE_CHECK=1,
-# or with `update.check<TAB>off` in settings.tsv. Never affects exit codes.
+# "newer" verdict keeps warning without any network (cleared when
+# cmd_update succeeds). Offline or failed checks are silent, state writes
+# are best-effort (never fatal), and --dry-run neither probes nor writes.
+# Skipped in dev mode, with DEVSEED_NO_UPDATE_CHECK=1, or with
+# `update.check<TAB>off` in settings.tsv. Never affects exit codes.
 
 UPDATE_CHECK_TTL=86400
 
 # update_check_probe — fresh upstream comparison; echoes newer|current|unknown.
-# Newer means: a remote v* release tag we don't have locally, or (pre-tag)
-# a remote HEAD commit not present locally.
+# "Newer" is ancestry-based, not object-presence (a fetch can populate the
+# object DB without the checkout advancing): a remote v* release tag whose
+# commit is not an ancestor of HEAD, or — only when the remote has no
+# release tags — a remote HEAD that is not an ancestor of local HEAD.
+# The probe must never hang: BatchMode/ConnectTimeout kill ssh passphrase
+# and host-key prompts; the HTTP low-speed limits kill stalled transfers.
 update_check_probe() {
   local engine="$1" refs sha tag
-  refs="$(env GIT_TERMINAL_PROMPT=0 git -C "$engine" ls-remote --quiet origin HEAD 'refs/tags/v*' 2>/dev/null)" || {
+  refs="$(env GIT_TERMINAL_PROMPT=0 \
+    GIT_SSH_COMMAND='ssh -oBatchMode=yes -oConnectTimeout=5' \
+    GIT_HTTP_LOW_SPEED_LIMIT=1024 GIT_HTTP_LOW_SPEED_TIME=10 \
+    git -C "$engine" ls-remote --quiet origin HEAD 'refs/tags/v*' 2>/dev/null)" || {
     echo "unknown"
     return 0
   }
@@ -24,18 +33,24 @@ update_check_probe() {
     echo "unknown"
     return 0
   }
-  while IFS= read -r tag; do
-    [ -n "$tag" ] || continue
-    if ! git -C "$engine" rev-parse -q --verify "refs/tags/$tag" >/dev/null 2>&1; then
-      echo "newer"
-      return 0
-    fi
-  done <<EOF
-$(printf '%s\n' "$refs" | awk '$2 ~ /^refs\/tags\// { sub("refs/tags/", "", $2); sub("\\^\\{\\}$", "", $2); print $2 }' | LC_ALL=C sort -u)
+  if printf '%s\n' "$refs" | grep -q 'refs/tags/'; then
+    # Release tags exist: compare against them only (unreleased commits on
+    # the default branch after the newest tag are not "newer").
+    while IFS= read -r sha; do
+      [ -n "$sha" ] || continue
+      if ! git -C "$engine" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
+        echo "newer"
+        return 0
+      fi
+    done <<EOF
+$(printf '%s\n' "$refs" | awk '
+      $2 ~ /^refs\/tags\/.*\^\{\}$/ { sub("\\^\\{\\}$", "", $2); peeled[$2] = $1; next }
+      $2 ~ /^refs\/tags\// { plain[$2] = $1 }
+      END { for (t in plain) print (t in peeled) ? peeled[t] : plain[t] }')
 EOF
-  if ! printf '%s\n' "$refs" | grep -q 'refs/tags/'; then
+  else
     sha="$(printf '%s\n' "$refs" | awk '$2 == "HEAD" { print $1; exit }')"
-    if [ -n "$sha" ] && ! git -C "$engine" cat-file -e "$sha" 2>/dev/null; then
+    if [ -n "$sha" ] && ! git -C "$engine" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
       echo "newer"
       return 0
     fi
@@ -43,8 +58,14 @@ EOF
   echo "current"
 }
 
+# update_check_record STATE NOW VERDICT — best-effort cache write; a
+# read-only or occupied state dir must never break the actual command.
+update_check_record() {
+  { mkdir -p "$(state_dir)" && printf '%s\t%s\n' "$2" "$3" >"$1"; } 2>/dev/null || true
+}
+
 update_check() {
-  local engine state now checked_at verdict
+  local engine state now checked_at verdict delta
   [ "${DEVSEED_NO_UPDATE_CHECK:-0}" = "1" ] && return 0
   [ "$(setting_get update.check on)" = "off" ] && return 0
   engine="$DEVSEED_ROOT/engine"
@@ -59,17 +80,32 @@ update_check() {
   checked_at=0
   verdict=""
   if [ -f "$state" ]; then
-    checked_at="$(cut -f 1 "$state" 2>/dev/null || echo 0)"
-    verdict="$(cut -f 2 "$state" 2>/dev/null || true)"
+    checked_at="$(cut -f 1 "$state" 2>/dev/null | head -n 1 || true)"
+    verdict="$(cut -f 2 "$state" 2>/dev/null | head -n 1 || true)"
   fi
   case "$checked_at" in
     '' | *[!0-9]*) checked_at=0 ;;
   esac
+  case "$verdict" in
+    newer | current | unknown) ;;
+    *)
+      verdict=""
+      checked_at=0
+      ;;
+  esac
 
-  if [ $((now - checked_at)) -ge "$UPDATE_CHECK_TTL" ]; then
-    verdict="$(update_check_probe "$engine")"
-    mkdir -p "$(state_dir)"
-    printf '%s\t%s\n' "$now" "$verdict" >"$state"
+  delta=$((now - checked_at))
+  if [ "$delta" -ge "$UPDATE_CHECK_TTL" ] || [ "$delta" -lt 0 ]; then
+    if [ "${DEVSEED_DRY_RUN:-0}" = "1" ]; then
+      # dry-run: no probe, no writes; warn only from an existing verdict.
+      :
+    else
+      # Record the attempt BEFORE probing: a killed or hung probe must not
+      # retry on every subsequent command.
+      update_check_record "$state" "$now" "${verdict:-unknown}"
+      verdict="$(update_check_probe "$engine" || echo unknown)"
+      update_check_record "$state" "$now" "$verdict"
+    fi
   fi
 
   if [ "$verdict" = "newer" ]; then
@@ -105,6 +141,10 @@ cmd_update() {
     log "updating engine to $tag"
     run_cmd git -C "$engine" checkout --quiet "$tag" ||
       die "could not check out $tag" 2
+  fi
+  # A successful update clears the cached "newer" verdict immediately.
+  if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
+    update_check_record "$(state_dir)/update-check" "$(date +%s)" "current"
   fi
   log "engine now at: $(git -C "$engine" describe --tags --always 2>/dev/null || echo '?')"
 }
