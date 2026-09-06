@@ -50,7 +50,8 @@ EOF2
             float) flag="-float" ;;
             *) flag="-string" ;;
           esac
-          run_cmd defaults write "$domain" "$key" "$flag" "$prev"
+          run_cmd defaults write "$domain" "$key" "$flag" "$prev" ||
+            log_warn "restore: could not restore $domain $key (continuing)"
         fi
         n=$((n + 1))
         continue

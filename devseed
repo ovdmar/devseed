@@ -109,6 +109,16 @@ main() {
       ;;
   esac
 
+  # Refuse to operate on a config this engine cannot read (doctor is
+  # exempt: it must run on a broken config to diagnose it).
+  case "$cmd" in
+    capture | diff | apply | restore | export)
+      _fv=0
+      check_format_version || _fv=$?
+      [ "$_fv" -ne 2 ] || exit 2
+      ;;
+  esac
+
   case "$cmd" in
     version | --version | -V)
       devseed_print_version

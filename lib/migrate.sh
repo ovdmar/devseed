@@ -69,7 +69,8 @@ EOF
   fi
 
   managed="$(chezmoi_bin >/dev/null 2>&1 && chezmoi_cmd managed --include files 2>/dev/null || true)"
-  ts="$(utc_ts)"
+  init_backup_ts
+  ts="$DEVSEED_BACKUP_TS"
   bdir="$(backups_dir)/$ts"
 
   # --- merge pass ---
@@ -79,8 +80,13 @@ EOF
     if ! bundle_dest_contained "$rel"; then
       die "bundle rejected: $rel escapes the target through a symlinked parent" 2
     fi
-    if [ "$cat" = "secrets" ] && [ "$mode" -gt 600 ]; then
-      mode=600
+    if [ "$cat" = "secrets" ]; then
+      # Mask, not magnitude: ANY group/other permission bit (e.g. 066,
+      # 640, 407) forces 600 — only modes ending in 00 pass unchanged.
+      case "$mode" in
+        *00) ;;
+        *) mode=600 ;;
+      esac
     fi
     dest="$(target_path "$rel")"
     if [ -n "$managed" ] && printf '%s\n' "$managed" | grep -qx "$rel"; then

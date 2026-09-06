@@ -255,6 +255,16 @@ tsv_last_wins() {
   '
 }
 
+# init_backup_ts — ONE backup set per devseed invocation: every layer
+# writing backups in the same run shares $DEVSEED_BACKUP_TS, so a no-arg
+# `devseed restore` (latest set) reverts the whole run, not just the layer
+# that happened to back up last.
+init_backup_ts() {
+  if [ -z "${DEVSEED_BACKUP_TS:-}" ]; then
+    DEVSEED_BACKUP_TS="$(utc_ts)"
+  fi
+}
+
 # backup_target_file BDIR REL — copy the live target file into the backup
 # set with the manifest line cmd_restore consumes. The single writer of the
 # `target/<rel>` manifest format.

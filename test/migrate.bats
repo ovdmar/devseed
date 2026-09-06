@@ -75,11 +75,18 @@ valid_bundle_with() {
   [ "$(cat "$DEVSEED_TARGET/.zshrc")" = "config-owned" ]
 }
 
-@test "secrets mode is clamped to 600" {
-  b="$(valid_bundle_with .ssh/id_test 'KEY' 644 secrets)"
+@test "secrets mode is clamped by MASK, not magnitude (644, 066, 640 -> 600; 400 kept)" {
+  for m in 644 066 640; do
+    rm -f "$DEVSEED_TARGET/.ssh/id_test"
+    b="$(valid_bundle_with .ssh/id_test 'KEY' "$m" secrets)"
+    run_devseed apply --from "$b" --only defaults
+    [ "$status" -eq 0 ]
+    [ "$(stat -f '%Lp' "$DEVSEED_TARGET/.ssh/id_test")" = "600" ]
+  done
+  rm -f "$DEVSEED_TARGET/.ssh/id_test"
+  b="$(valid_bundle_with .ssh/id_test 'KEY' 400 secrets)"
   run_devseed apply --from "$b" --only defaults
-  [ "$status" -eq 0 ]
-  [ "$(stat -f '%Lp' "$DEVSEED_TARGET/.ssh/id_test")" = "600" ]
+  [ "$(stat -f '%Lp' "$DEVSEED_TARGET/.ssh/id_test")" = "400" ]
 }
 
 @test "category flags scope the merge" {

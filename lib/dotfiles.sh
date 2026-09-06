@@ -35,7 +35,8 @@ apply_dotfiles() {
     fi
   fi
 
-  ts="$(utc_ts)"
+  init_backup_ts
+  ts="$DEVSEED_BACKUP_TS"
   bdir="$(backups_dir)/$ts"
   while IFS= read -r line; do
     [ -n "$line" ] || continue

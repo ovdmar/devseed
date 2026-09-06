@@ -45,6 +45,16 @@ teardown() { common_teardown; }
   [ "$(setting_get missing.key fallback)" = "fallback" ]
 }
 
+@test "config-consuming commands refuse a newer format.version (doctor diagnoses)" {
+  printf 'format.version\t99\n' >"$DEVSEED_ROOT/config/settings.tsv"
+  run "$REPO_DIR/devseed" diff
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"newer than this engine"* ]]
+  run "$REPO_DIR/devseed" doctor
+  [ "$status" -eq 2 ] # doctor RUNS and reports broken, its own exit code
+  [[ "$output" == *"status: broken"* ]]
+}
+
 @test "example settings.tsv is well-formed and at the current version" {
   rm -rf "$DEVSEED_ROOT/config"
   [ "$(format_version)" = "1" ]

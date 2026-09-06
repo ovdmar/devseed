@@ -21,8 +21,12 @@ UPDATE_CHECK_TTL=86400
 # The probe must never hang: BatchMode/ConnectTimeout kill ssh passphrase
 # and host-key prompts; the HTTP low-speed limits kill stalled transfers.
 update_check_probe() {
-  local engine="$1" refs sha tag
-  refs="$(env GIT_TERMINAL_PROMPT=0 \
+  local engine="$1" refs sha pairs newest
+  # GIT_ASKPASS=/bin/echo: a configured credential helper/askpass could
+  # otherwise block on an authenticated HTTPS remote. Residual worst case:
+  # a blackholed TCP connect can still take the OS timeout (~75s) — once
+  # per 24h at most, since the attempt is recorded before probing.
+  refs="$(env GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/echo \
     GIT_SSH_COMMAND='ssh -oBatchMode=yes -oConnectTimeout=5' \
     GIT_HTTP_LOW_SPEED_LIMIT=1024 GIT_HTTP_LOW_SPEED_TIME=10 \
     git -C "$engine" ls-remote --quiet origin HEAD 'refs/tags/v*' 2>/dev/null)" || {
@@ -34,20 +38,20 @@ update_check_probe() {
     return 0
   }
   if printf '%s\n' "$refs" | grep -q 'refs/tags/'; then
-    # Release tags exist: compare against them only (unreleased commits on
-    # the default branch after the newest tag are not "newer").
-    while IFS= read -r sha; do
-      [ -n "$sha" ] || continue
-      if ! git -C "$engine" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
-        echo "newer"
-        return 0
-      fi
-    done <<EOF
-$(printf '%s\n' "$refs" | awk '
-      $2 ~ /^refs\/tags\/.*\^\{\}$/ { sub("\\^\\{\\}$", "", $2); peeled[$2] = $1; next }
-      $2 ~ /^refs\/tags\// { plain[$2] = $1 }
-      END { for (t in plain) print (t in peeled) ? peeled[t] : plain[t] }')
-EOF
+    # Release tags exist: compare against the NEWEST tag only (v:refname
+    # order, matching what cmd_update would check out) — an off-mainline
+    # hotfix tag must not warn forever, and unreleased default-branch
+    # commits after the newest tag are not "newer".
+    pairs="$(printf '%s\n' "$refs" | awk '
+      $2 ~ /^refs\/tags\/.*\^\{\}$/ { sub("refs/tags/", "", $2); sub("\\^\\{\\}$", "", $2); peeled[$2] = $1; next }
+      $2 ~ /^refs\/tags\// { sub("refs/tags/", "", $2); plain[$2] = $1 }
+      END { for (t in plain) print t "\t" ((t in peeled) ? peeled[t] : plain[t]) }')"
+    newest="$(printf '%s\n' "$pairs" | cut -f 1 | sort -V | tail -n 1)"
+    sha="$(printf '%s\n' "$pairs" | awk -F '\t' -v t="$newest" '$1 == t { print $2; exit }')"
+    if [ -n "$sha" ] && ! git -C "$engine" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
+      echo "newer"
+      return 0
+    fi
   else
     sha="$(printf '%s\n' "$refs" | awk '$2 == "HEAD" { print $1; exit }')"
     if [ -n "$sha" ] && ! git -C "$engine" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then

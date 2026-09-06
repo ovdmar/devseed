@@ -142,6 +142,33 @@ esac'
   grep -q "defaults write com.a k1 -int 7" "$STUB_LOG"
 }
 
+@test "one apply run = one backup set: restore reverts dotfiles AND defaults together" {
+  echo "M .zshrc" >"$CHEZMOI_STATUS_FILE"
+  echo "precious" >"$DEVSEED_TARGET/.zshrc"
+  printf 'com.a\tk1\tint\n' >"$DEVSEED_ROOT/config/defaults/allowlist.tsv"
+  printf 'com.a\tk1\tint\t5\n' >"$DEVSEED_ROOT/config/defaults/values.tsv"
+  printf 'com.a\t-\n' >"$DEVSEED_ROOT/config/defaults/restart-map.tsv"
+  make_stub defaults 'case "$1 $3" in
+"read-type k1") echo "Type is integer";;
+"read k1") echo 7;;
+"write k1") ;;
+"delete k1") ;;
+*) echo "does not exist" >&2; exit 1;;
+esac'
+  run_devseed apply --only dotfiles,defaults --force
+  [ "$status" -eq 0 ]
+  [ "$(find "$DEVSEED_ROOT/backups" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -eq 1 ]
+  manifest="$(find "$DEVSEED_ROOT/backups" -name manifest.txt | head -n 1)"
+  grep -q "target/.zshrc" "$manifest"
+  grep -q "$(printf 'defaults\tcom.a\tk1')" "$manifest"
+
+  echo "clobbered" >"$DEVSEED_TARGET/.zshrc"
+  run_devseed restore
+  [ "$status" -eq 0 ]
+  [ "$(cat "$DEVSEED_TARGET/.zshrc")" = "precious" ]
+  grep -q "defaults write com.a k1 -int 7" "$STUB_LOG"
+}
+
 @test "restore round-trip from an apply backup" {
   echo "M .zshrc" >"$CHEZMOI_STATUS_FILE"
   echo "precious" >"$DEVSEED_TARGET/.zshrc"

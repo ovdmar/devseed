@@ -36,8 +36,13 @@ overlay_registered() {
 }
 
 # overlay_hooks_enabled NAME — the per-overlay opt-in recorded at
-# registration.
+# registration (or, for a just-registered overlay in this run — including
+# under --dry-run — the in-memory answer).
 overlay_hooks_enabled() {
+  if [ -n "${DEVSEED_OVERLAY_HOOKS_RUN:-}" ]; then
+    [ "$DEVSEED_OVERLAY_HOOKS_RUN" = "yes" ]
+    return
+  fi
   [ -f "$(overlay_registry)" ] &&
     grep "^$1$(printf '\t')" "$(overlay_registry)" | cut -f 3 | grep -qx "yes"
 }
@@ -86,7 +91,11 @@ resolve_overlay() {
       hooks="yes"
     fi
     # Registration persists TRUST (including the hook opt-in) — it must
-    # honor --dry-run like every other mutation.
+    # honor --dry-run like every other mutation. The in-memory answer still
+    # applies to THIS run so the dry-run plan matches what a real apply
+    # with the same answers would do.
+    # shellcheck disable=SC2034 # read by overlay_hooks_enabled
+    DEVSEED_OVERLAY_HOOKS_RUN="$hooks"
     if [ "${DEVSEED_DRY_RUN:-0}" = "1" ]; then
       printf 'DRY-RUN: register overlay %s (%s, hooks: %s) in %s\n' \
         "$name" "$src" "$hooks" "$(overlay_registry)"

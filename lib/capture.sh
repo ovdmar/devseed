@@ -24,7 +24,8 @@ bootstrap_user_config() {
 # a manifest, so `devseed restore` covers config too.
 snapshot_config() {
   local ts dest
-  ts="$(utc_ts)"
+  init_backup_ts
+  ts="$DEVSEED_BACKUP_TS"
   dest="$(backups_dir)/$ts/config"
   run_cmd mkdir -p "$(backups_dir)/$ts"
   run_cmd cp -R "$DEVSEED_ROOT/config" "$dest"

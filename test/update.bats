@@ -143,6 +143,19 @@ check_state() { echo "$DEVSEED_ROOT/state/update-check"; }
   [[ "$output" == *"newer version"* ]]
 }
 
+@test "update check: an off-mainline hotfix tag does not warn when the newest tag is current" {
+  install_engine
+  git -C "$DEVSEED_INSTALL_SOURCE" checkout -q -b hotfix HEAD~1
+  echo "hotfix" >>"$DEVSEED_INSTALL_SOURCE/README.md"
+  git -C "$DEVSEED_INSTALL_SOURCE" -c user.email=t@t -c user.name=t commit -qam hotfix
+  git -C "$DEVSEED_INSTALL_SOURCE" tag v0.9.1 # genuinely NOT an ancestor of main
+  git -C "$DEVSEED_INSTALL_SOURCE" checkout -q main
+  git -C "$DEVSEED_INSTALL_SOURCE" tag v1.0.0 # newest, at engine HEAD
+  run "$DEVSEED_BIN_DIR/devseed" doctor
+  [[ "$output" != *"newer version"* ]]
+  grep -q "current" "$(check_state)"
+}
+
 @test "update check: unreleased commits after the newest local tag stay silent" {
   install_engine
   git -C "$DEVSEED_INSTALL_SOURCE" tag v1.0.0 # engine HEAD == tag commit

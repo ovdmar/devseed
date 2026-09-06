@@ -33,15 +33,23 @@ apply_defaults() {
     # value (or <unset>) so `devseed restore` can put it back.
     if [ "${DEVSEED_DRY_RUN:-0}" != "1" ]; then
       if [ -z "$bdir" ]; then
-        ts="$(utc_ts)"
+        init_backup_ts
+        ts="$DEVSEED_BACKUP_TS"
         bdir="$(backups_dir)/$ts"
         mkdir -p "$bdir"
       fi
-      if [ "$had" = "1" ]; then
-        printf 'defaults\t%s\t%s\t%s\t%s\n' "$domain" "$key" "$dtype" "$have" >>"$bdir/manifest.txt"
-      else
-        printf 'defaults\t%s\t%s\t%s\t%s\n' "$domain" "$key" "$dtype" "<unset>" >>"$bdir/manifest.txt"
-      fi
+      case "$have" in
+        *$'\n'*)
+          log_warn "defaults: previous value of $domain $key is multi-line; restore will not revert it"
+          ;;
+        *)
+          if [ "$had" = "1" ]; then
+            printf 'defaults\t%s\t%s\t%s\t%s\n' "$domain" "$key" "$dtype" "$have" >>"$bdir/manifest.txt"
+          else
+            printf 'defaults\t%s\t%s\t%s\t%s\n' "$domain" "$key" "$dtype" "<unset>" >>"$bdir/manifest.txt"
+          fi
+          ;;
+      esac
     fi
     run_cmd defaults write "$domain" "$key" "$flag" "$want"
     case " $touched " in
@@ -158,15 +166,16 @@ defaults_normalize_bool() {
 # capture_defaults — read every allowlisted key and rewrite values.tsv
 # (sorted, deterministic).
 capture_defaults() {
-  local allow rows_tmp values_tmp domain key dtype actual value
-  allow="$(config_dir)/defaults/allowlist.tsv"
-  if [ ! -f "$allow" ]; then
-    log "defaults: no allowlist.tsv; skipping"
+  local rows_tmp values_tmp domain key dtype actual value
+  if [ -z "$(merged_allowlist_rows)" ]; then
+    log "defaults: no allowlisted keys; skipping"
     return 0
   fi
   rows_tmp="$(mktemp)"
   values_tmp="$(mktemp)"
 
+  # Merged (base + overlay) allowlist: an overlay-allowlisted key must be
+  # capturable, not just writable.
   while IFS="$(printf '\t')" read -r domain key dtype; do
     [ -n "$domain" ] || continue
     if ! actual="$(defaults read-type "$domain" "$key" 2>/dev/null)"; then
@@ -185,7 +194,7 @@ capture_defaults() {
     fi
     printf '%s\t%s\t%s\t%s\n' "$domain" "$key" "$dtype" "$value" >>"$rows_tmp"
   done <<EOF
-$(tsv_rows "$allow")
+$(merged_allowlist_rows)
 EOF
 
   {
@@ -196,6 +205,6 @@ EOF
   } >"$values_tmp"
   run_cmd cp "$values_tmp" "$(config_dir)/defaults/values.tsv"
   rm -f "$rows_tmp" "$values_tmp"
-  log "defaults: captured $(tsv_rows "$allow" | grep -c . || true) allowlisted keys"
+  log "defaults: captured $(merged_allowlist_rows | grep -c . || true) allowlisted keys"
   return 0
 }
