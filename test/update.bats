@@ -115,7 +115,7 @@ check_state() { echo "$DEVSEED_ROOT/state/update-check"; }
   [ ! -f "$(check_state)" ]
 }
 
-@test "update check: version and update commands don't trigger it" {
+@test "update check: version and update commands don't trigger the pre-command probe" {
   install_engine
   advance_source
   run "$DEVSEED_BIN_DIR/devseed" version
@@ -123,7 +123,8 @@ check_state() { echo "$DEVSEED_ROOT/state/update-check"; }
   [ ! -f "$(check_state)" ]
   run "$DEVSEED_BIN_DIR/devseed" update
   [ "$status" -eq 0 ]
-  [ ! -f "$(check_state)" ]
+  [[ "$output" != *"newer version"* ]]
+  grep -q "current" "$(check_state)" # update records success, no probe ran
 }
 
 @test "update check: skipped in dev mode even with an installed, behind engine present" {
@@ -210,6 +211,7 @@ check_state() { echo "$DEVSEED_ROOT/state/update-check"; }
 @test "update check: corrupt state files re-probe instead of going silent" {
   install_engine
   advance_source
+  mkdir -p "$DEVSEED_ROOT/state"
   for payload in 'garbage' "$(date +%s)" ''; do
     printf '%s\n' "$payload" >"$(check_state)"
     run "$DEVSEED_BIN_DIR/devseed" doctor
