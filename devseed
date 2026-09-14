@@ -114,10 +114,19 @@ log() { printf 'devseed: %s\n' "$*"; }
 
 engine_version() { cat "$ENGINE_DIR/VERSION" 2>/dev/null || echo "0.0.0"; }
 
-config_version() {
+yaml_version() {
   sed -n 's/^version:[[:space:]]*"\{0,1\}\([0-9][0-9.]*\)"\{0,1\}[[:space:]]*$/\1/p' \
-    "$(config_dir)/config.yaml" 2>/dev/null | head -1
+    "$1" 2>/dev/null | head -1
 }
+
+config_version() { yaml_version "$(config_dir)/config.yaml"; }
+
+# The reference config shipped with this engine. Once you fork your own
+# config the two drift, and a fix to a step — a command that no longer
+# works on a current macOS, say — reaches you only through `devseed sync`.
+# Pulling the engine does not carry it, because the step lives in the
+# config. Without this line that is invisible until the step fails.
+reference_version() { yaml_version "$ENGINE_DIR/config.reference/config.yaml"; }
 
 # True when $1 is strictly newer than $2. Component-wise numeric sort, so
 # 2.0.10 beats 2.0.9 where a string compare would not.
@@ -173,6 +182,14 @@ EOF
   if [ -n "$latest" ] && version_gt "$latest" "$(engine_version)"; then
     printf '  A newer devseed is available: %s (you have %s)\n' "$latest" "$(engine_version)"
     printf '  Update with: git -C %s pull\n\n' "$ENGINE_DIR"
+  fi
+
+  local refv
+  refv="$(reference_version)"
+  if [ -n "$refv" ] && [ -n "$cv" ] && version_gt "$refv" "$cv"; then
+    printf '  The reference config has moved on: %s (yours is %s)\n' "$refv" "$cv"
+    printf '  It may carry fixes to steps you already have.\n'
+    printf '  Review them with: devseed sync\n\n'
   fi
 }
 die() {

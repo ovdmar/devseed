@@ -42,7 +42,8 @@ defined() {
 }
 
 @test "version helpers are defined and report a semver" {
-  for fn in engine_version config_version version_gt remote_version; do
+  for fn in engine_version config_version version_gt remote_version \
+    yaml_version reference_version; do
     defined "$fn" || {
       echo "missing: $fn"
       return 1
@@ -51,4 +52,26 @@ defined() {
   run bash -c 'src="$1"; set -- help; source "$src" >/dev/null 2>&1; engine_version' _ "$DEVSEED"
   [ "$status" -eq 0 ]
   [[ "$output" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+# A fix to a step lives in the config, not the engine, so pulling the
+# engine cannot deliver it. The intro compares the shipped reference
+# against your config to say so; that needs a readable reference version.
+@test "the shipped reference config reports a semver" {
+  run bash -c 'src="$1"; set -- help; source "$src" >/dev/null 2>&1; reference_version' _ "$DEVSEED"
+  [ "$status" -eq 0 ]
+  [[ "$output" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+@test "version_gt compares numerically, not as strings" {
+  gt() {
+    # Save the args before `set -- help` overwrites the positionals.
+    bash -c 'src="$1"; a="$2"; b="$3"; set -- help;
+             source "$src" >/dev/null 2>&1; version_gt "$a" "$b"' \
+      _ "$DEVSEED" "$1" "$2"
+  }
+  gt 2.1.0 2.0.0
+  gt 2.0.10 2.0.9
+  ! gt 2.0.0 2.1.0
+  ! gt 2.0.0 2.0.0
 }
