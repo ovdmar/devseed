@@ -340,12 +340,12 @@ npm_globals:
 - pi-coding-agent
 - pi-mcp-adapter
 steps:
-- cmd: /bin/bash -lc "pyenv install -s 3.8.20"
-  creates: ~/.pyenv/versions/3.8.20
+- cmd: /bin/bash -lc "command -v uv >/dev/null 2>&1 || PATH=\"$HOME/.devseed/state/bin:$PATH\"; uv python install 3.8"
+  creates: ~/.local/bin/python3.8
   id: python-3.8
   kind: run
   order: 41
-  title: Python 3.8 via pyenv
+  title: Python 3.8 (prebuilt, via uv)
 - creates: ~/.oh-my-zsh/custom/themes/powerlevel10k
   file: scripts/oh-my-zsh.sh
   id: oh-my-zsh
