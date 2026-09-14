@@ -41,7 +41,10 @@ LIST_KEYS = {
     "extras": ("key",),
     "curl_tools": ("name", "arch"),
     "git_repos": ("dest",),
-    "macos_defaults": ("host", "domain", "key"),
+    # One entry per DOMAIN, holding a values map. Keyed by domain so a
+    # later layer can override a single key by deep-merge, instead of
+    # having to restate the whole row as the per-key shape required.
+    "macos_defaults": ("host", "domain"),
     "manual_apps": ("name",),
     "mas": ("id",),
 }
@@ -124,6 +127,46 @@ def apply_removes(node):
     elif isinstance(node, list):
         for v in node:
             apply_removes(v)
+
+
+def defaults_type(value):
+    """osx_defaults' type name for a YAML value.
+
+    Inferred rather than declared: YAML already distinguishes true from
+    "true" and 54 from "54", so asking the author to repeat it in a type
+    field only creates a second thing that can disagree with the first.
+    """
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, dict):
+        return "dict"
+    if isinstance(value, list):
+        return "array"
+    return "string"
+
+
+def flatten_defaults(entries):
+    """Per-domain config entries -> the per-key rows the ansible step loops."""
+    rows = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        # Tolerate the old per-key shape so a half-migrated config still
+        # resolves rather than silently dropping its settings.
+        if "key" in entry:
+            rows.append(entry)
+            continue
+        for key, value in (entry.get("values") or {}).items():
+            row = {"domain": entry.get("domain"), "key": key,
+                   "type": defaults_type(value), "value": value}
+            if entry.get("host"):
+                row["host"] = entry["host"]
+            rows.append(row)
+    return rows
 
 
 def load_layer(path):
@@ -221,6 +264,8 @@ def cmd_resolve(args):
     gate_steps(config, cli_tags)
     validate_steps(config)
     apply_extras(config, [e for e in re.split(r"[\s,]+", args.extras or "") if e])
+
+    config["macos_defaults"] = flatten_defaults(config.get("macos_defaults") or [])
 
     resolved = {f"devseed_{k}": v for k, v in config.items()}
     resolved["devseed_stack"] = stack

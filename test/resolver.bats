@@ -42,9 +42,9 @@ git_repos:
     url: git@github.com:x/dotfiles.git
 macos_defaults:
   - domain: com.apple.dock
-    key: autohide
-    type: bool
-    value: false
+    values:
+      autohide: false
+      tilesize: 48
 dotfiles:
   files: [.zshrc]
 EOF
@@ -58,8 +58,8 @@ brew:
 uv_tools: ["ruff==0.6.0"]
 macos_defaults:
   - domain: com.apple.dock
-    key: autohide
-    type: bool
+    values:
+      autohide: true
     value: true
 steps:
   - id: brew
@@ -131,10 +131,17 @@ res() { # KEY -> compact json on stdout
   [ "$(res 'devseed_steps[*].id')" = '["git_identity", "brew", "backend_tools"]' ]
 }
 
-@test "dict lists: keyed upsert by domain+key" {
+@test "macos_defaults: a profile overrides one key without restating the domain" {
   resolve work
+  # the profile set only autohide; tilesize must survive from the base
   [ "$(res 'devseed_macos_defaults[?key==autohide].value')" = "true" ]
-  [ "$(res 'devseed_macos_defaults[*].key')" = '["autohide"]' ]
+  [ "$(res 'devseed_macos_defaults[?key==tilesize].value')" = "48" ]
+}
+
+@test "macos_defaults: types are inferred from the YAML value" {
+  resolve
+  [ "$(res 'devseed_macos_defaults[?key==autohide].type')" = '"bool"' ]
+  [ "$(res 'devseed_macos_defaults[?key==tilesize].type')" = '"int"' ]
 }
 
 @test "git_repos: {workspace} expansion" {
