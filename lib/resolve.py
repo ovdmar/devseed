@@ -29,6 +29,7 @@ Usage:
 import argparse
 import json
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -219,17 +220,26 @@ def validate_steps(config, config_dir=None, engine_dir=None):
         # config built before that was fixed still has the gap.
         if kind in ("script", "tasks") and config_dir is not None:
             target = Path(config_dir) / step["file"]
-            if not target.is_file():
-                hint = ""
-                if engine_dir is not None:
-                    shipped = Path(engine_dir) / "config.reference" / step["file"]
-                    if shipped.is_file():
-                        hint = (f"\n  The engine ships one. Copy it with:\n"
-                                f"    cp -R {shipped.parent} {Path(config_dir)}/")
-                sys.exit(
-                    f"resolve: step '{sid}' ({kind}) names {step['file']}, "
-                    f"which does not exist in {config_dir}.{hint}"
-                )
+            if target.is_file():
+                continue
+            # Restore it rather than print a command for the human to run.
+            # The step came from the reference and so did the file, so
+            # this is repairing what onboarding should have copied, not
+            # inventing anything. It lands as a reviewable git diff in the
+            # config repo like any other change.
+            shipped = (Path(engine_dir) / "config.reference" / step["file"]
+                       if engine_dir is not None else None)
+            if shipped is not None and shipped.is_file():
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(shipped, target)
+                print(f"resolve: restored {step['file']} for step '{sid}' "
+                      f"from the engine's reference config", file=sys.stderr)
+                continue
+            sys.exit(
+                f"resolve: step '{sid}' ({kind}) names {step['file']}, "
+                f"which does not exist in {config_dir}, and the engine has "
+                f"no copy to restore. Add the file or remove the step."
+            )
 
 
 def apply_extras(config, selected):

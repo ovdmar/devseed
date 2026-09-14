@@ -19,6 +19,7 @@ row" here exactly as it would during a merge.
 """
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -151,6 +152,29 @@ def main():
             current = sorted(set(current))
         put(mine, path, current)
 
+    # Adopting an entry that names a file has to bring the file too. A
+    # `steps` row pointing at scripts/x.sh, or a dotfiles.files entry
+    # naming a payload, is useless on its own — the first dies at run time
+    # with "No such file or directory", the second silently copies
+    # nothing.
+    ref_dir = Path(args.reference).parent
+    copied = []
+    for i in chosen:
+        path, item = added[i]
+        rels = []
+        if path[-1] == "steps" and isinstance(item, dict) and item.get("file"):
+            rels.append(item["file"])
+        elif path == ("dotfiles", "files"):
+            rels.append(f"dotfiles/{item}")
+        for rel in rels:
+            src = ref_dir / rel
+            if not src.is_file():
+                continue
+            dest = my_path.parent / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+            copied.append(rel)
+
     header = "".join(l for l in my_path.read_text().splitlines(keepends=True) if l.startswith("#"))
     with my_path.open("w") as fh:
         fh.write(header)
@@ -161,6 +185,10 @@ def main():
     for i in chosen:
         path, item = added[i]
         print(f"  {'.'.join(path):<22} {show(item)}")
+    if copied:
+        print(f"\nAlso copied {len(copied)} file(s) the adopted entries name:")
+        for rel in copied:
+            print(f"  {rel}")
     print(f"\nReview with `git -C {my_path.parent} diff`, then run `devseed apply`.")
     return 0
 

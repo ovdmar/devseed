@@ -236,7 +236,28 @@ EOF
 # resolve and die as rc=127 two thirds of the way into a run, after the
 # machine had already been changed. Onboarding built configs like that
 # for a while, so this is a real config shape, not a hypothetical.
-@test "script steps naming a missing file fail before anything runs" {
+@test "a missing step file is restored from the engine's reference" {
+  mkdir -p "$CFG/profiles" "$TMP/engine/config.reference/scripts"
+  printf '#!/bin/bash\necho shipped\n' >"$TMP/engine/config.reference/scripts/shipped.sh"
+  mkdir -p "$TMP/engine/ansible"
+  cp "$ENGINE" "$TMP/engine/ansible/steps.yaml"
+  cat >"$CFG/profiles/shipped.yaml" <<'EOF'
+steps:
+  - id: from-reference
+    kind: script
+    order: 43
+    title: Shipped step
+    file: scripts/shipped.sh
+    changed_when: "false"
+EOF
+  run python3 "$BATS_TEST_DIRNAME/../lib/resolve.py" resolve \
+    --engine "$TMP/engine/ansible/steps.yaml" --config "$CFG" --out "$OUT" --stack shipped
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"restored scripts/shipped.sh"* ]]
+  [ -f "$CFG/scripts/shipped.sh" ]
+}
+
+@test "script steps naming a file nobody has still fail before anything runs" {
   mkdir -p "$CFG/scripts"
   cat >"$CFG/profiles/scripted.yaml" <<'EOF'
 steps:
@@ -250,7 +271,7 @@ EOF
   run resolve scripted
   [ "$status" -ne 0 ]
   [[ "$output" == *"names scripts/absent.sh"* ]]
-  [[ "$output" == *"does not exist"* ]]
+  [[ "$output" == *"no copy to restore"* ]]
 
   # and it passes once the file is there
   printf '#!/bin/bash\ntrue\n' >"$CFG/scripts/absent.sh"
