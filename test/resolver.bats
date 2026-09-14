@@ -7,7 +7,10 @@ setup() {
   ENGINE="$TMP/steps.yaml"
   CFG="$TMP/config"
   OUT="$TMP/resolved.yaml"
-  mkdir -p "$CFG/profiles/work/dotfiles" "$CFG/dotfiles"
+  mkdir -p "$CFG/profiles/work/dotfiles" "$CFG/dotfiles" "$CFG/scripts"
+  # The fixture declares a script step, and resolve now insists a declared
+  # file actually exists, so give it one.
+  printf '#!/bin/bash\ntrue\n' >"$CFG/scripts/corp.sh"
 
   cat >"$ENGINE" <<'EOF'
 prereqs:
@@ -227,4 +230,30 @@ EOF
   [ "$status" -ne 0 ] || [ "$output" != "null" ]
   # untagged engine steps survive a null enabled_tags
   [[ "$(res devseed_steps)" == *git_identity* ]]
+}
+
+# A script step naming a file that is not there used to sail through
+# resolve and die as rc=127 two thirds of the way into a run, after the
+# machine had already been changed. Onboarding built configs like that
+# for a while, so this is a real config shape, not a hypothetical.
+@test "script steps naming a missing file fail before anything runs" {
+  mkdir -p "$CFG/scripts"
+  cat >"$CFG/profiles/scripted.yaml" <<'EOF'
+steps:
+  - id: needs-a-file
+    kind: script
+    order: 42
+    title: Scripted step
+    file: scripts/absent.sh
+    changed_when: "false"
+EOF
+  run resolve scripted
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"names scripts/absent.sh"* ]]
+  [[ "$output" == *"does not exist"* ]]
+
+  # and it passes once the file is there
+  printf '#!/bin/bash\ntrue\n' >"$CFG/scripts/absent.sh"
+  run resolve scripted
+  [ "$status" -eq 0 ]
 }

@@ -199,7 +199,7 @@ def gate_steps(config, cli_tags):
     config["steps"] = steps
 
 
-def validate_steps(config):
+def validate_steps(config, config_dir=None, engine_dir=None):
     for step in config.get("steps", []):
         sid = step.get("id", "<no id>")
         kind = step.get("kind")
@@ -212,6 +212,24 @@ def validate_steps(config):
             sys.exit(f"resolve: step '{sid}' (run) must declare 'cmd'")
         if kind in ("script", "tasks") and "file" not in step:
             sys.exit(f"resolve: step '{sid}' ({kind}) must declare 'file'")
+
+        # A declared file that is not there must fail HERE, before anything
+        # is changed, not as rc=127 two thirds of the way through a run.
+        # Onboarding used to copy steps without the files they name, so a
+        # config built before that was fixed still has the gap.
+        if kind in ("script", "tasks") and config_dir is not None:
+            target = Path(config_dir) / step["file"]
+            if not target.is_file():
+                hint = ""
+                if engine_dir is not None:
+                    shipped = Path(engine_dir) / "config.reference" / step["file"]
+                    if shipped.is_file():
+                        hint = (f"\n  The engine ships one. Copy it with:\n"
+                                f"    cp -R {shipped.parent} {Path(config_dir)}/")
+                sys.exit(
+                    f"resolve: step '{sid}' ({kind}) names {step['file']}, "
+                    f"which does not exist in {config_dir}.{hint}"
+                )
 
 
 def apply_extras(config, selected):
@@ -262,7 +280,7 @@ def cmd_resolve(args):
     apply_removes(config)
     expand_placeholders(config, config.get("workspace_path", "~/workspace"))
     gate_steps(config, cli_tags)
-    validate_steps(config)
+    validate_steps(config, config_dir, Path(args.engine).resolve().parent.parent)
     apply_extras(config, [e for e in re.split(r"[\s,]+", args.extras or "") if e])
 
     config["macos_defaults"] = flatten_defaults(config.get("macos_defaults") or [])
