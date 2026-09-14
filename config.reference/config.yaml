@@ -144,14 +144,15 @@ defaults_restart:
 dotfiles:
   files:
   - .config/git/ignore
+  - .config/iterm2/com.googlecode.iterm2.plist
   - .config/karabiner/karabiner.json
   - .config/shell/aliases.zsh
   - .config/shell/env.zsh
   - .fzf.zsh
-  - .p10k.zsh
-  - .zshrc
   - .gitconfig
+  - .p10k.zsh
   - .zprofile
+  - .zshrc
   - Library/Keyboard Layouts/Romanian - Programmers (Custom).bundle/Contents/Info.plist
   - Library/Keyboard Layouts/Romanian - Programmers (Custom).bundle/Contents/Resources/Romanian - Programmers (Custom).icns
   - Library/Keyboard Layouts/Romanian - Programmers (Custom).bundle/Contents/Resources/Romanian - Programmers (Custom).keylayout
@@ -326,6 +327,14 @@ macos_defaults:
   key: stickyBezel
   type: bool
   value: true
+- domain: com.googlecode.iterm2
+  key: LoadPrefsFromCustomFolder
+  type: bool
+  value: true
+- domain: com.googlecode.iterm2
+  key: PrefsCustomFolder
+  type: string
+  value: /Users/ovidiumarus/.config/iterm2
 npm_globals:
 - mcp-remote
 - pi-coding-agent
