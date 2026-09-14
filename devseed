@@ -220,7 +220,13 @@ ensure_collections() {
   want="$(shasum -a 256 "$ENGINE_DIR/ansible/requirements.yaml" | awk '{print $1}')"
   [ -f "$marker" ] && [ "$(cat "$marker")" = "$want" ] && return 0
   log "installing ansible collections (pinned)"
-  "$VENV/bin/ansible-galaxy" collection install -r "$ENGINE_DIR/ansible/requirements.yaml" \
+  # ANSIBLE_COLLECTIONS_PATH as well as -p: galaxy compares the -p target
+  # against the CONFIGURED collection paths and, when it is not one of
+  # them, warns that "the installed collection will not be picked up".
+  # Harmless here, since the playbook run sets the same variable, but it
+  # is the first thing a new user sees and it reads like a failure.
+  ANSIBLE_COLLECTIONS_PATH="$STATE_DIR/collections" \
+    "$VENV/bin/ansible-galaxy" collection install -r "$ENGINE_DIR/ansible/requirements.yaml" \
     -p "$STATE_DIR/collections" >/dev/null
   echo "$want" >"$STATE_DIR/collections/.devseed-requirements"
 }
