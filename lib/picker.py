@@ -68,15 +68,18 @@ def _fallback(labels, preselected, title, out):
 
 
 def _draw(tty_out, title, labels, state, cursor, first):
+    # Every line ends "\r\n", never a bare "\n". Raw mode clears OPOST,
+    # so a line feed moves down WITHOUT returning to column 0 and the list
+    # walks diagonally off the screen.
     if not first:
         # Redraw in place: one line per item, plus title and footer.
         tty_out.write(f"\033[{len(labels) + 2}A")
-    tty_out.write(f"\033[2K{title}\n")
+    tty_out.write(f"\r\033[2K{title}\r\n")
     for i, label in enumerate(labels):
         box = CHECKED if state[i] else UNCHECKED
         pointer = ">" if i == cursor else " "
-        tty_out.write(f"\033[2K{pointer} {box} {label}\n")
-    tty_out.write("\033[2K  space toggles · ↑/↓ or j/k moves · a all · n none · enter confirms\n")
+        tty_out.write(f"\r\033[2K{pointer} {box} {label}\r\n")
+    tty_out.write("\r\033[2K  space toggles · up/down or j/k moves · a all · n none · enter confirms\r\n")
     tty_out.flush()
 
 
@@ -132,7 +135,7 @@ def select(labels, preselected=(), title="Select:"):
                 raise KeyboardInterrupt
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-        tty_out.write("\n")
+        tty_out.write("\r\n")
         tty_out.flush()
         tty_in.close()
         tty_out.close()
