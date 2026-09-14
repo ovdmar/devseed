@@ -397,7 +397,7 @@ run_ansible() { # $1 skip_json, $2 unattended, $3... extra ansible args
   local skip_json="$1" unattended="$2"
   shift 2
   local blob
-  blob="{\"devseed_skip_ids\": $skip_json, \"devseed_unattended\": $unattended, \"devseed_uv_bin\": \"$(uv_bin)\"}"
+  blob="{\"devseed_skip_ids\": $skip_json, \"devseed_unattended\": $unattended, \"devseed_uv_bin\": \"$(uv_bin)\", \"devseed_log_path\": \"$STATE_DIR/ansible.log\"}"
   local pw=""
   # NOT `sudo -n true`: that only proves a timestamp is currently valid,
   # which is true right after any other sudo and says nothing about the
@@ -559,7 +559,9 @@ cmd_apply() {
     log "done in $(((SECONDS - t0) / 60))m$(printf '%02d' $(((SECONDS - t0) % 60)))s (stack: base${stack:+ + $(echo "$stack" | tr ',' ' ')})"
     print_followups
   else
-    die "apply failed — fix the error above and re-run; the pipeline is idempotent"
+    die "apply failed — fix the error above and re-run; the pipeline is idempotent
+  full output: $STATE_DIR/ansible.log
+  last failure: grep -B20 'fatal:' $STATE_DIR/ansible.log | tail -40"
   fi
 }
 

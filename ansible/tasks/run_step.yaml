@@ -114,8 +114,13 @@
       when: step.kind not in ['builtin', 'run', 'script', 'tasks', 'manual']
 
   rescue:
+    # A looped step writes one line per item, so by the time it fails the
+    # line that says WHICH item died can be hundreds of lines up the
+    # scrollback — and "fix the error above" is useless advice when
+    # "above" is off the top of the terminal. Name the log every time.
     - name: "Step failed — remediation"
       ansible.builtin.fail:
         msg: >-
           Step '{{ step.id }}' failed.
           {{ step.fix | default('Fix the error above and re-run `devseed apply` — the pipeline is idempotent.') }}
+          Full output: {{ devseed_log_path | default('~/.devseed/state/ansible.log') }}
