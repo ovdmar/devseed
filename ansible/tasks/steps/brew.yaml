@@ -106,11 +106,22 @@
   vars:
     homebrew_installed_packages: "{{ (devseed_brew | default({})).formulae | default([]) }}"
     homebrew_taps: []
-    homebrew_cask_apps: "{{ (devseed_brew | default({})).casks | default([]) }}"
-    # An app already sitting in /Applications is the normal case on a
-    # machine that is not box-fresh — Chrome, installed by hand before
-    # devseed ran, otherwise fails the whole brew step with "It seems
-    # there is already an App at ...". Adopt it instead.
+    # Casks go in as dicts so each carries --adopt. An app already sitting
+    # in /Applications is the normal case on a machine that is not
+    # box-fresh, and without this brew refuses with "It seems there is
+    # already an App at ..." and one pre-existing app fails the whole step.
+    #
+    # accept_external_apps looks like the answer and is not: the module
+    # greps the error for "Error: It seems there is already an App at",
+    # while brew actually emits "Error: google-chrome: It seems ...", with
+    # the cask token inserted, so the match never fires. Doing it through
+    # install_options also keeps the install inside the role, which is
+    # what holds the sudo password that pkg-based casks need.
+    homebrew_cask_apps: >-
+      {{ ((devseed_brew | default({})).casks | default([]))
+         | map('regex_replace', '^(.+)$',
+               '{"name": "\1", "install_options": "appdir=/Applications,adopt"}')
+         | map('from_json') | list }}
     homebrew_cask_accept_external_apps: true
     homebrew_upgrade_all_packages: false
     homebrew_use_brewfile: false
