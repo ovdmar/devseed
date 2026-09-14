@@ -294,6 +294,38 @@ macos_defaults:
   key: reduceTransparency
   type: bool
   value: false
+- domain: com.generalarcade.flycut
+  key: bezelAlpha
+  type: float
+  value: 0.7218120805369128
+- domain: com.generalarcade.flycut
+  key: bezelWidth
+  type: float
+  value: 645.3884228187919
+- domain: com.generalarcade.flycut
+  key: loadOnStartup
+  type: bool
+  value: false
+- domain: com.generalarcade.flycut
+  key: pasteMovesToTop
+  type: bool
+  value: true
+- domain: com.generalarcade.flycut
+  key: previousSyncClippingsViaICloud
+  type: bool
+  value: false
+- domain: com.generalarcade.flycut
+  key: removeDuplicates
+  type: bool
+  value: true
+- domain: com.generalarcade.flycut
+  key: skipPasswordFields
+  type: bool
+  value: false
+- domain: com.generalarcade.flycut
+  key: stickyBezel
+  type: bool
+  value: true
 npm_globals:
 - mcp-remote
 - pi-coding-agent
