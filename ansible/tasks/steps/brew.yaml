@@ -130,6 +130,43 @@
 # HANG forever (observed: 6h in a VM), so every mas task carries a hard
 # timeout, and failures/timeouts are reported, never fatal — sign in and
 # re-run picks them up.
+# Homebrew creates its directories group-writable so several admins can
+# share an install. zsh's compaudit refuses to load completions from an
+# fpath directory, or the immediate parent of one, that anybody but the
+# owner can write — so oh-my-zsh prints a wall of "Insecure
+# completion-dependent directories detected" on every single shell, and
+# that output in turn trips powerlevel10k's instant-prompt warning. Two
+# alarming-looking errors, one cause.
+#
+# `chmod go-w "$(brew --prefix)/share"` is Homebrew's own documented
+# remedy for exactly this message. Only directories this user owns are
+# touched: on an Intel Mac /usr/local can belong to root, and silently
+# needing sudo to fix a completion warning is worse than the warning.
+- name: Find the brew completion directories
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ devseed_brew_prefix }}/share"
+    - "{{ devseed_brew_prefix }}/share/zsh"
+    - "{{ devseed_brew_prefix }}/share/zsh/site-functions"
+  loop_control:
+    label: "{{ item }}"
+  register: devseed_brew_share
+
+- name: Take group and other write off them
+  ansible.builtin.file:
+    path: "{{ item.stat.path }}"
+    state: directory
+    mode: "go-w"
+  loop: >-
+    {{ devseed_brew_share.results | default([])
+       | selectattr('stat.exists')
+       | selectattr('stat.isdir')
+       | selectattr('stat.pw_name', 'eq', ansible_facts.user_id)
+       | list }}
+  loop_control:
+    label: "{{ item.stat.path }}"
+
 - name: App Store apps (mas)
   when: ((devseed_brew | default({})).mas | default([])) | length > 0
   block:
