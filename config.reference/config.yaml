@@ -141,6 +141,7 @@ defaults_restart:
   com.apple.finder: Finder
   com.apple.menuextra.clock: SystemUIServer
   com.apple.screencapture: SystemUIServer
+  com.steipete.codexbar: CodexBar
 dotfiles:
   files:
   - .config/git/ignore
@@ -296,6 +297,12 @@ macos_defaults:
   type: bool
   value: false
 - domain: com.generalarcade.flycut
+  key: ShortcutRecorder mainHotkey
+  type: dict
+  value:
+    keyCode: 9
+    modifierFlags: 1310720
+- domain: com.generalarcade.flycut
   key: bezelAlpha
   type: float
   value: 0.7218120805369128
@@ -335,6 +342,71 @@ macos_defaults:
   key: PrefsCustomFolder
   type: string
   value: /Users/ovidiumarus/.config/iterm2
+- domain: com.steipete.codexbar
+  key: SUAutomaticallyUpdate
+  type: bool
+  value: true
+- domain: com.steipete.codexbar
+  key: SUEnableAutomaticChecks
+  type: bool
+  value: true
+- domain: com.steipete.codexbar
+  key: claudeWebExtrasEnabled
+  type: bool
+  value: false
+- domain: com.steipete.codexbar
+  key: debugDisableKeychainAccess
+  type: bool
+  value: false
+- domain: com.steipete.codexbar
+  key: debugLogLevel
+  type: string
+  value: verbose
+- domain: com.steipete.codexbar
+  key: launchAtLogin
+  type: bool
+  value: true
+- domain: com.steipete.codexbar
+  key: openAIWebAccessEnabled
+  type: bool
+  value: true
+- domain: com.steipete.codexbar
+  key: openAIWebBatterySaverEnabled
+  type: bool
+  value: false
+- domain: com.steipete.codexbar
+  key: providerToggles
+  type: dict
+  value:
+    antigravity: false
+    claude: true
+    codex: false
+    cursor: true
+    gemini: false
+- domain: com.steipete.codexbar
+  key: refreshFrequency
+  type: string
+  value: fiveMinutes
+- domain: com.steipete.codexbar
+  key: selectedMenuProvider
+  type: string
+  value: claude
+- domain: com.steipete.codexbar
+  key: sessionQuotaNotificationsEnabled
+  type: bool
+  value: true
+- domain: com.steipete.codexbar
+  key: showOptionalCreditsAndExtraUsage
+  type: bool
+  value: true
+- domain: com.steipete.codexbar
+  key: tokenCostUsageEnabled
+  type: bool
+  value: true
+- domain: com.steipete.codexbar
+  key: usageBarsShowUsed
+  type: bool
+  value: true
 npm_globals:
 - mcp-remote
 - pi-coding-agent
