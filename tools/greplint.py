@@ -8,9 +8,16 @@
    unregistered override reports "ok" for a command that never ran — the
    `brew trust` regression, where a missing command looked like success
    and surfaced hours later as a refused third-party cask.
+3. Swallowed loops: a task with `ignore_errors: true` that registers a
+   result must have a later task that actually selects the failures out of
+   it. ignore_errors alone converts a failure into a success, so a loop
+   over a hundred items can report "ok" on a machine where every one of
+   them failed. A task with ignore_errors and no register is exempt: it
+   has nothing to report from, which git_repos relies on deliberately.
 """
 
 import glob
+import json
 import sys
 
 import yaml
@@ -58,6 +65,33 @@ def main():
                     f"{path}: task '{name}' sets failed_when: false without register: "
                     "— a swallowed failure nothing inspects"
                 )
+        # Rule 3, over every task rather than only command/shell ones.
+        ordered = list(tasks_in(doc))
+        for i, task in enumerate(ordered):
+            if task.get("ignore_errors") is not True:
+                continue
+            var = task.get("register")
+            if not var:
+                continue
+            name = task.get("name", "<unnamed>")
+            # A bare "failed" substring would be satisfied by any later
+            # task carrying failed_when, so require one task that both
+            # names the variable and picks the failures out of it.
+            def reads_failures(later, _var=var):
+                # json, not yaml.safe_dump: dumping a single-quoted YAML
+                # scalar doubles the quotes inside it, turning
+                # selectattr('failed' into selectattr(''failed''.
+                text = json.dumps(later)
+                return _var in text and (
+                    "selectattr('failed'" in text or f"{_var}.failed" in text
+                )
+
+            if not any(reads_failures(later) for later in ordered[i + 1:]):
+                failures.append(
+                    f"{path}: task '{name}' sets ignore_errors with register: {var} "
+                    "but nothing downstream reads its failures"
+                )
+
     if failures:
         print("greplint: dishonest command/shell tasks:")
         print("\n".join(f"  {f}" for f in failures))

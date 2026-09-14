@@ -10,6 +10,31 @@
   loop_control:
     label: "{{ item.domain }} {{ item.key }}"
   register: devseed_defaults_result
+  # Let every key be attempted, then report all the failures at once in
+  # the task below. Aborting on the first one means the name of the
+  # failing key is a single line among a hundred, hundreds of lines up the
+  # scrollback, which in practice nobody ever reads — the run is still
+  # failed, just undiagnosable. Nothing is swallowed: the next task
+  # re-raises with the domain, the key and the module's own message.
+  ignore_errors: true
+
+- name: "Report macOS defaults that could not be written"
+  ansible.builtin.fail:
+    msg: |-
+      {{ bad | length }} of {{ devseed_defaults_result.results | default([]) | length }} macOS defaults could not be written:
+      {% for r in bad %}
+        {{ r.item.domain }} {{ r.item.key }} ({{ r.item.type }}) = {{ r.item.value }}
+            {{ r.msg | default('no message from the module') }}
+      {% endfor %}
+      A "Could not write domain" here means the terminal running devseed
+      lacks Full Disk Access: System Settings > Privacy & Security > Full
+      Disk Access. Anything else is usually a bad type or value for that
+      key in your config.
+  vars:
+    bad: >-
+      {{ devseed_defaults_result.results | default([])
+         | selectattr('failed', 'defined') | selectattr('failed') | list }}
+  when: bad | length > 0
 
 - name: Restart apps whose domains changed
   ansible.builtin.command:
