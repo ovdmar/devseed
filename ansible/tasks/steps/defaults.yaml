@@ -17,10 +17,15 @@
   loop: "{{ (devseed_defaults_restart | default({})) | dict2items }}"
   loop_control:
     label: "{{ item.value }}"
+  # selectattr('changed') alone raises on a result that carries no
+  # `changed` key, and map(attribute='item.domain') raises on one whose
+  # item is not a defaults row. Either would fail this task, and with it
+  # the whole step, over an app restart that does not matter.
   when: >-
     devseed_defaults_result.results | default([])
-    | selectattr('changed')
-    | map(attribute='item.domain')
+    | selectattr('changed', 'defined') | selectattr('changed')
+    | map(attribute='item') | selectattr('domain', 'defined')
+    | map(attribute='domain')
     | select('eq', item.key) | list | length > 0
   changed_when: false
   failed_when: false

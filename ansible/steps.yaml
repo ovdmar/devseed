@@ -81,6 +81,12 @@ steps:
     kind: builtin
     order: 60
     title: macOS defaults
+    fix: >-
+      The failing domain and key are named on the "failed:" line above and
+      in the log. Protected domains (com.apple.universalaccess,
+      com.apple.Accessibility) need Full Disk Access for the terminal
+      running devseed: System Settings > Privacy & Security > Full Disk
+      Access. Then re-run.
 
   - id: git_repos
     kind: builtin
