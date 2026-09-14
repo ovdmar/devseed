@@ -391,13 +391,26 @@ run_ansible() { # $1 skip_json, $2 unattended, $3... extra ansible args
   else
     log "warning: sudo needs a password and this run is non-interactive; escalating steps may fail"
   fi
+  # Homebrew shells out to /usr/bin/sudo itself to run `installer` for
+  # pkg-based casks, in a process with no terminal, so it cannot prompt.
+  # SUDO_ASKPASS does not help: plain sudo only consults an askpass helper
+  # when given -A, which brew does not do (verified). The route that works
+  # is the one the homebrew_cask module already provides — the role passes
+  # sudo_password: "{{ ansible_become_password }}" — but that variable is
+  # NOT defined by --become-password-file, which only feeds connection
+  # become. Define it as a var too. Single quotes doubled per YAML, and the
+  # file is a pipe, so the password still never lands on disk.
+  local pw_yaml=""
+  [ -n "$pw" ] && pw_yaml="ansible_become_password: '$(printf '%s' "$pw" | sed "s/'/''/g")'"
+
   local rc=0
   if [ -n "$pw" ]; then
     ANSIBLE_CONFIG="$ENGINE_DIR/ansible/ansible.cfg" \
       ANSIBLE_COLLECTIONS_PATH="$STATE_DIR/collections" \
       ANSIBLE_LOG_PATH="$STATE_DIR/ansible.log" \
       "$VENV/bin/ansible-playbook" -i localhost, "$ENGINE_DIR/ansible/playbook.yaml" \
-      -e "@$RESOLVED" -e "$blob" --become-password-file <(printf '%s' "$pw") "$@" || rc=$?
+      -e "@$RESOLVED" -e "$blob" -e @<(printf '%s\n' "$pw_yaml") \
+      --become-password-file <(printf '%s' "$pw") "$@" || rc=$?
     pw=""
   else
     ANSIBLE_CONFIG="$ENGINE_DIR/ansible/ansible.cfg" \
