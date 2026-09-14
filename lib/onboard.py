@@ -33,7 +33,10 @@ CATEGORIES = [
     ("npm_globals", None, str),
     ("git_repos", None, lambda i: f"{i['dest']}  ({i['url']})"),
     ("curl_tools", None, lambda i: f"{i['name']} {i.get('version', '')} ({i.get('arch', '')})"),
-    ("macos_defaults", None, lambda i: f"{i['domain']} {i['key']} = {i['value']}"),
+    # One entry per domain since config schema 2.0.0, so the label counts
+    # the keys rather than naming a single one.
+    ("macos_defaults", None,
+     lambda i: f"{i['domain']}  ({len(i.get('values') or {})} settings)"),
     ("login_items", None, str),
     ("manual_apps", None, lambda i: i.get("name", str(i))),
     ("dotfiles", "files", str),
@@ -127,6 +130,21 @@ def main():
             config[key] = ref[key]
 
     dest_dir.mkdir(parents=True, exist_ok=True)
+
+    # Steps are carried over verbatim above, so the files they point at
+    # have to come too. Without this a `kind: script` step lands in the
+    # new config referring to a script that was never copied, and the
+    # pipeline dies on "No such file or directory" at that step.
+    for step in config.get("steps", []) or []:
+        rel = step.get("file") if isinstance(step, dict) else None
+        if not rel:
+            continue
+        src = ref_dir / rel
+        if src.is_file():
+            dest = dest_dir / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest)
+
     for rel in config.get("dotfiles", {}).get("files", []):
         src = ref_dir / "dotfiles" / rel
         if src.is_file():

@@ -147,7 +147,7 @@
       failed_when: false
       timeout: 60
       environment:
-        PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+        PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.PATH }}"
 
 # One script so we can gate and short-circuit. Discovery first: on modern
 # macOS the App Store account rides the iCloud Apple ID (MobileMeAccounts)
@@ -196,7 +196,7 @@
       changed_when: "'mas_changed=0' not in devseed_mas_run.stdout"
       timeout: 900
       environment:
-        PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+        PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.PATH }}"
 
     - name: Report pending mas installs
       ansible.builtin.debug:

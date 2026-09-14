@@ -1,11 +1,6 @@
 ---
 # One editor's extension set. Included per editor from
 # cursor_extensions.yaml, so `editor` is always defined here.
-#
-# `--install-extension` exits 0 whether or not it changed anything, so the
-# installed set is listed first and only the missing ones are installed.
-# Installing unconditionally would report changed on every apply and fail
-# the idempotency gate.
 - name: "Locate the editor CLI for {{ editor.name }}"
   ansible.builtin.shell:
     executable: /bin/bash
@@ -30,7 +25,7 @@
   changed_when: false
   failed_when: false
   environment:
-    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.PATH }}"
 
 - name: "Report extensions pending an install of {{ editor.name }}"
   ansible.builtin.debug:
@@ -40,32 +35,53 @@
       were skipped for it. Install it, then re-run `devseed apply`.
   when: devseed_editor_cli.rc | default(1) != 0
 
-- name: "List installed extensions for {{ editor.name }}"
-  ansible.builtin.command:
-    cmd: "{{ devseed_editor_cli.stdout }} --list-extensions"
-  register: devseed_editor_installed
-  changed_when: false
-  failed_when: false
+# One task rather than a loop, because a looped command cannot report
+# changed honestly: `changed_when` cannot see the item's rc, so a failed
+# install still counted as a change and would do so on every run forever.
+# Some extensions are genuinely uninstallable in some editors — the
+# anysphere.* ones are Cursor's own and VS Code rejects them — so that is
+# a permanent false "changed", not an edge case. Counting inside the
+# script and reading the registered variable is the same shape the mas
+# step uses.
+- name: "Install missing extensions for {{ editor.name }}"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -u -o pipefail
+      cli={{ devseed_editor_cli.stdout | quote }}
+      have=$("$cli" --list-extensions 2>/dev/null | tr '[:upper:]' '[:lower:]')
+      installed=0
+      failed=""
+      while IFS= read -r ext; do
+        [ -n "$ext" ] || continue
+        lower=$(printf '%s' "$ext" | tr '[:upper:]' '[:lower:]')
+        case "
+      $have" in *"
+      $lower"*) continue ;; esac
+        if "$cli" --install-extension "$ext" >/dev/null 2>&1; then
+          installed=$((installed + 1))
+        else
+          failed="$failed $ext"
+        fi
+      done <<'EXTS_EOF'
+      {% for ext in devseed_cursor_extensions | default([]) %}
+      {{ ext }}
+      {% endfor %}
+      EXTS_EOF
+      echo "installed=$installed"
+      [ -n "$failed" ] && echo "unavailable:$failed"
+      exit 0
+  register: devseed_editor_result
+  changed_when: "'installed=0' not in devseed_editor_result.stdout"
   when: devseed_editor_cli.rc | default(1) == 0
 
-# Marketplace ids are case-insensitive and --list-extensions does not
-# guarantee the case a config author typed, so compare lowercased.
-- name: "Install missing extensions for {{ editor.name }}"
-  ansible.builtin.command:
-    cmd: "{{ devseed_editor_cli.stdout }} --install-extension {{ item }}"
-  loop: "{{ devseed_cursor_extensions | default([]) }}"
-  when:
-    - devseed_editor_cli.rc | default(1) == 0
-    - (item | lower) not in ((devseed_editor_installed.stdout | default('')) | lower).split('\n')
-  changed_when: true
-  register: devseed_editor_result
-  failed_when: false
-
-- name: "Report extensions that failed for {{ editor.name }}"
+- name: "Report extensions unavailable for {{ editor.name }}"
   ansible.builtin.debug:
     msg: >-
-      EDITOR EXTENSION FAILED: {{ item.item }} for {{ editor.name }} —
-      install it from the extensions pane, then re-run `devseed apply`.
-  loop: "{{ devseed_editor_result.results | default([]) | selectattr('rc', 'defined') | rejectattr('rc', 'eq', 0) | list }}"
-  loop_control:
-    label: "{{ item.item }}"
+      NOT AVAILABLE for {{ editor.name }}:
+      {{ devseed_editor_result.stdout_lines | select('match', '^unavailable:') | first | replace('unavailable:', '') }}
+      — this editor's marketplace does not carry them.
+  when:
+    - devseed_editor_result.skipped is not defined
+    - devseed_editor_result.stdout is defined
+    - devseed_editor_result.stdout is search('unavailable:')

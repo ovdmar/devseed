@@ -32,7 +32,7 @@
   changed_when: false
   failed_when: false
   environment:
-    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.PATH }}"
 
 - name: Install npm globals
   community.general.npm:
@@ -46,7 +46,7 @@
   loop: "{{ devseed_npm_globals | default([]) }}"
   when: devseed_npm_check.rc == 0
   environment:
-    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_facts.env.PATH }}"
   register: devseed_npm_result
   ignore_errors: true
 
