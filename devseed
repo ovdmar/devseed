@@ -369,6 +369,48 @@ print(",".join(extras[n]["key"] for n in chosen))
 PYEOF
 }
 
+run_preflight() { # $1 unattended
+  local flag=""
+  [ "$1" = 1 ] && flag="--unattended"
+  DEVSEED_PY="$VENV/bin/python" bash "$ENGINE_DIR/lib/preflight.sh" "$RESOLVED" $flag
+}
+
+run_ansible() { # $1 skip_json, $2 unattended, $3... extra ansible args
+  local skip_json="$1" unattended="$2"
+  shift 2
+  local blob
+  blob="{\"devseed_skip_ids\": $skip_json, \"devseed_unattended\": $unattended, \"devseed_uv_bin\": \"$(uv_bin)\"}"
+  local pw=""
+  if sudo -n true 2>/dev/null; then
+    : # passwordless sudo — nothing to ask
+  elif [ -t 0 ] && [ "$unattended" != 1 ]; then
+    printf 'devseed: sudo password (asked once, kept in memory only): '
+    read -rs pw
+    printf '\n'
+    printf '%s\n' "$pw" | sudo -S -v 2>/dev/null || die "sudo password rejected"
+  else
+    log "warning: sudo needs a password and this run is non-interactive; escalating steps may fail"
+  fi
+  local rc=0
+  if [ -n "$pw" ]; then
+    ANSIBLE_CONFIG="$ENGINE_DIR/ansible/ansible.cfg" \
+      ANSIBLE_COLLECTIONS_PATH="$STATE_DIR/collections" \
+      ANSIBLE_LOG_PATH="$STATE_DIR/ansible.log" \
+      "$VENV/bin/ansible-playbook" -i localhost, "$ENGINE_DIR/ansible/playbook.yaml" \
+      -e "@$RESOLVED" -e "$blob" --become-password-file <(printf '%s' "$pw") "$@" || rc=$?
+    pw=""
+  else
+    ANSIBLE_CONFIG="$ENGINE_DIR/ansible/ansible.cfg" \
+      ANSIBLE_COLLECTIONS_PATH="$STATE_DIR/collections" \
+      ANSIBLE_LOG_PATH="$STATE_DIR/ansible.log" \
+      "$VENV/bin/ansible-playbook" -i localhost, "$ENGINE_DIR/ansible/playbook.yaml" \
+      -e "@$RESOLVED" -e "$blob" "$@" || rc=$?
+  fi
+  return "$rc"
+}
+
+# --- commands ------------------------------------------------------------
+
 parse_stack_args() { # sets: stack tags only except yes unattended reset noextras
   stack="" tags="" only="" except="" yes=0 unattended=0 reset=0 noextras=0
   while [ "$#" -gt 0 ]; do
