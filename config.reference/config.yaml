@@ -1,5 +1,5 @@
 # devseed config for this machine.
-# Layered by profiles/<name>.yaml; see config.example in the engine.
+# Layered by profiles/<name>.yaml.
 brew:
   casks:
   - adobe-acrobat-reader

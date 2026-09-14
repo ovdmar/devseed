@@ -45,7 +45,7 @@ back to the reference config read-only.
 ## Config
 
 Personal config lives in `~/.devseed/config` (make it a git repo). Same
-schema at every layer — see `config.example/config.yaml`. The engine's
+schema at every layer — see `config.reference/config.yaml`. The engine's
 pipeline is data (`ansible/steps.yaml`): your config can reorder
 (`order:`), disable (`absent: true`), replace, or insert steps — never
 fork the engine.
