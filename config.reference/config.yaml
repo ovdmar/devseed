@@ -1,6 +1,5 @@
 # devseed config for this machine.
 # Layered by profiles/<name>.yaml.
-version: 1.0.0
 brew:
   casks:
   - adobe-acrobat-reader
@@ -312,5 +311,13 @@ steps:
   kind: script
   order: 62
   title: Keyboard input sources
+- id: accessibility-permissions
+  instructions: "macOS keeps these grants in a SIP-protected database, so no tool can\nset them for you — tccutil only resets permissions, never grants them.\nThis one is genuinely yours.\n\nOpen the pane:\n\
+    \  open 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'\n\nTick:\n  Flycut     — otherwise it cannot paste from clipboard history\n  Rectangle  — otherwise it cannot\
+    \ move or resize windows\n"
+  kind: manual
+  order: 92
+  title: Grant Accessibility to Flycut and Rectangle
 uv_tools:
 - browser-use
+version: 1.0.0
