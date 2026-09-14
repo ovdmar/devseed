@@ -110,8 +110,9 @@ def choose(candidates, assume_yes):
     sys.stdout.flush()
     labels = [f"{name}  ({kind})" for kind, name in candidates]
     try:
-        chosen = picker.select(
-            labels, (), "Found in your history, installed now, not in your config:")
+        title = (f"Detected {len(candidates)} package(s) you installed by hand "
+                 "that your config does not track. Which do you want?")
+        chosen = picker.select(labels, (), title)
     except KeyboardInterrupt:
         return []
     return [candidates[i] for i in chosen]

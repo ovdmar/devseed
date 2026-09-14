@@ -134,7 +134,9 @@ def main():
         print(f"--yes: adopting all {len(added)}.")
     else:
         try:
-            chosen = picker.select(labels, (), "In the reference but not in your config — adopt which?")
+            title = (f"Detected {len(added)} thing(s) in the reference that your "
+                     "config does not have. Which do you want?")
+            chosen = picker.select(labels, (), title)
         except KeyboardInterrupt:
             return 130
     if not chosen:
