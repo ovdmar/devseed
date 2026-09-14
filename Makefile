@@ -1,5 +1,8 @@
 # devseed v2 — all checks run locally; no CI service.
-SHELL_SOURCES := devseed $(wildcard install.sh lib/*.sh e2e/*.sh e2e/fixtures/config/scripts/*.sh)
+# config.reference/scripts/*.sh ship to every machine that adopts the
+# reference config, so they are engine surface and get linted like it.
+SHELL_SOURCES := devseed $(wildcard install.sh lib/*.sh e2e/*.sh \
+                   e2e/fixtures/config/scripts/*.sh config.reference/scripts/*.sh)
 
 .PHONY: lint greplint test e2e-vm
 
