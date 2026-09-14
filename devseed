@@ -111,6 +111,23 @@ onboard_config() {
 }
 
 log() { printf 'devseed: %s\n' "$*"; }
+
+# Printed at the top of every apply. Short on purpose: it is read once
+# with attention and then skimmed for years.
+intro() {
+  cat <<'EOF'
+
+devseed — your Mac, described by one config.
+
+  apply makes this machine match the config. It is not a one-time
+  installer: run it again after editing the config and only the
+  difference is applied, so the config stays the source of truth.
+
+  Nothing here is hidden — every step comes from your config, and
+  anything needing you is asked for up front.
+
+EOF
+}
 die() {
   printf 'devseed: %s\n' "$*" >&2
   exit 2
@@ -171,9 +188,15 @@ ensure_uv() {
     *) die "unsupported architecture: $arch" ;;
   esac
   url="https://github.com/astral-sh/uv/releases/download/$UV_VERSION/$tarball"
-  log "installing uv $UV_VERSION (pinned, sha256-verified)"
+  log "installing uv $UV_VERSION (pinned, sha256-verified) — ~16 MB from GitHub"
   tmp="$(mktemp -d)"
-  curl -fsSL -o "$tmp/$tarball" "$url"
+  # Not -s: this is the longest quiet moment in a first run, and a silent
+  # 16 MB download over a slow link is indistinguishable from a hang.
+  # Timeouts so a stalled connection fails instead of waiting forever.
+  curl -fL --progress-bar \
+    --connect-timeout 10 --max-time 600 --retry 3 --retry-delay 2 \
+    -o "$tmp/$tarball" "$url" ||
+    die "could not download uv from $url — check the network and re-run"
   echo "$sha  $tmp/$tarball" | shasum -a 256 -c - >/dev/null || die "uv download failed checksum verification"
   tar -xzf "$tmp/$tarball" -C "$tmp"
   mkdir -p "$STATE_DIR/bin"
@@ -407,6 +430,7 @@ cmd_apply() {
   parse_stack_args "$@"
 
   local t0=$SECONDS
+  intro
   bootstrap
   # Before onboarding, not inside bootstrap: `devseed diff` shares bootstrap
   # and must not install anything. Doing it here means gh is available to
