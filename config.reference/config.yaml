@@ -353,6 +353,12 @@ steps:
   kind: manual
   order: 92
   title: Grant Accessibility to Flycut and Rectangle
+- changed_when: '''CHANGED'' in stdout'
+  file: scripts/fonts.sh
+  id: fonts
+  kind: script
+  order: 46
+  title: MesloLGS NF fonts (powerlevel10k glyphs)
 uv_tools:
 - browser-use
-version: 2.3.0
+version: 2.4.0
