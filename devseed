@@ -188,6 +188,7 @@ devseed — declarative Mac setup
                 [--base] [--yes] [--unattended] [--no-extras]
   devseed diff  [PROFILE...] [--tags T1,T2]   # what would change (check mode)
   devseed resolve [PROFILE...] [--tags T1,T2] # rebuild state/resolved.yaml
+  devseed capture [--yes]                    # fold hand-installed brew packages into the config
   devseed doctor
   devseed version | help
 
@@ -572,6 +573,11 @@ cmd_resolve() {
   log "resolved -> $RESOLVED (stack: base${stack:+ + $(echo "$stack" | tr ',' ' ')})"
 }
 
+cmd_capture() {
+  bootstrap
+  "$VENV/bin/python" "$ENGINE_DIR/lib/capture.py" "$(config_dir)/config.yaml" "$@"
+}
+
 cmd_doctor() {
   log "engine:  $ENGINE_DIR"
   log "config:  $(config_dir)$([ -d "$DEVSEED_ROOT/config" ] || echo '  (reference fallback — run devseed apply to onboard)')"
@@ -594,6 +600,10 @@ case "${1:-help}" in
   resolve)
     shift
     cmd_resolve "$@"
+    ;;
+  capture)
+    shift
+    cmd_capture "$@"
     ;;
   doctor) cmd_doctor ;;
   version)
