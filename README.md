@@ -9,6 +9,26 @@ pipeline with real prerequisite checks, and idempotent re-apply forever.
 ./devseed diff             # what would change (check mode)
 ```
 
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ovdmar/devseed/main/install.sh | bash
+```
+
+Clones the engine into `~/.devseed/engine` and links `devseed` into
+`~/.local/bin`. On a machine without the Xcode Command Line Tools it
+starts Apple's installer and exits — finish that dialog, then run the
+line again.
+
+If `~/.local/bin` isn't on your PATH yet:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile
+exec zsh -l
+```
+
+Then `devseed apply`.
+
 ## How it works
 
 - A thin bash bootstrapper (`devseed`) does the config-free part on a
@@ -39,8 +59,9 @@ If `~/.devseed/config` doesn't exist, `devseed apply` offers to:
    login items, dotfiles, …), keep all / none / a numbered subset, and a
    fresh git-initialized config is created for you.
 
-When a config exists this is skipped entirely. Non-interactive runs fall
-back to the reference config read-only.
+When a config exists this is skipped entirely. A non-interactive run
+without one refuses instead: falling back to `config.reference` would
+write somebody else's git identity and dotfiles onto the machine.
 
 ## Config
 
