@@ -190,9 +190,6 @@ macos_defaults:
     NSAutomaticPeriodSubstitutionEnabled: false
     NSAutomaticSpellingCorrectionEnabled: false
     com.apple.swipescrolldirection: true
-- domain: com.apple.Accessibility
-  values:
-    KeyRepeatEnabled: 1
 - domain: com.apple.AppleMultitouchMouse
   values:
     MouseButtonMode: OneButton
@@ -236,9 +233,6 @@ macos_defaults:
 - domain: com.apple.menuextra.clock
   values:
     ShowDayOfWeek: true
-- domain: com.apple.universalaccess
-  values:
-    reduceTransparency: false
 - domain: com.generalarcade.flycut
   values:
     ShortcutRecorder mainHotkey:
@@ -361,4 +355,4 @@ steps:
   title: Grant Accessibility to Flycut and Rectangle
 uv_tools:
 - browser-use
-version: 2.2.0
+version: 2.3.0
