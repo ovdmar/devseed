@@ -107,6 +107,7 @@ def choose(candidates, assume_yes):
     # Nothing pre-checked: these are additions to your config, so each one
     # should be a deliberate yes rather than something you have to notice
     # and turn off.
+    sys.stdout.flush()
     labels = [f"{name}  ({kind})" for kind, name in candidates]
     try:
         chosen = picker.select(
