@@ -67,20 +67,59 @@ def _fallback(labels, preselected, title, out):
     return _parse_numeric(answer, len(labels))
 
 
-def _draw(tty_out, title, labels, state, cursor, first):
+def _clean(text, width):
+    """One line, no control characters, never wider than the terminal.
+
+    A label can carry anything a config does — a manual step's
+    instructions are a whole paragraph — and a newline inside one would
+    shear the display apart.
+    """
+    flat = " ".join(str(text).split())
+    return flat if len(flat) <= width else flat[: max(1, width - 1)] + "…"
+
+
+def _size(tty_out):
+    try:
+        cols, rows = os.get_terminal_size(tty_out.fileno())
+    except OSError:
+        cols, rows = 80, 24
+    return max(20, cols), max(6, rows)
+
+
+def _window(count, cursor, rows):
+    """Which slice of the list is on screen, keeping the cursor inside it."""
+    avail = max(3, rows - 4)  # title, both overflow hints, footer
+    if count <= avail:
+        return 0, count
+    top = min(max(0, cursor - avail // 2), count - avail)
+    return top, top + avail
+
+
+def _draw(tty_out, title, labels, state, cursor, prev_lines):
     # Every line ends "\r\n", never a bare "\n". Raw mode clears OPOST,
     # so a line feed moves down WITHOUT returning to column 0 and the list
     # walks diagonally off the screen.
-    if not first:
-        # Redraw in place: one line per item, plus title and footer.
-        tty_out.write(f"\033[{len(labels) + 2}A")
-    tty_out.write(f"\r\033[2K{title}\r\n")
-    for i, label in enumerate(labels):
+    cols, rows = _size(tty_out)
+    top, bottom = _window(len(labels), cursor, rows)
+    if prev_lines:
+        tty_out.write(f"\033[{prev_lines}A")
+
+    out = [f"\r\033[2K{_clean(title, cols)}\r\n"]
+    if top > 0:
+        out.append(f"\r\033[2K   ... {top} more above\r\n")
+    for i in range(top, bottom):
         box = CHECKED if state[i] else UNCHECKED
         pointer = ">" if i == cursor else " "
-        tty_out.write(f"\r\033[2K{pointer} {box} {label}\r\n")
-    tty_out.write("\r\033[2K  space toggles · up/down or j/k moves · a all · n none · enter confirms\r\n")
+        # The prefix "> [x] " is 6 columns; leave one more spare so a
+        # full-width line cannot wrap and desynchronise the redraw count.
+        out.append(f"\r\033[2K{pointer} {box} {_clean(labels[i], cols - 7)}\r\n")
+    if bottom < len(labels):
+        out.append(f"\r\033[2K   ... {len(labels) - bottom} more below\r\n")
+    out.append(f"\r\033[2K{_clean('  space toggles · up/down or j/k moves · a all · n none · enter confirms', cols)}\r\n")
+
+    tty_out.write("".join(out))
     tty_out.flush()
+    return len(out)
 
 
 def select(labels, preselected=(), title="Select:"):
@@ -105,10 +144,9 @@ def select(labels, preselected=(), title="Select:"):
     saved = termios.tcgetattr(fd)
     try:
         tty.setraw(fd)
-        first = True
+        drawn = 0
         while True:
-            _draw(tty_out, title, labels, state, cursor, first)
-            first = False
+            drawn = _draw(tty_out, title, labels, state, cursor, drawn)
             # os.read, not tty_in.read: a buffered text stream can sit
             # waiting to fill its buffer instead of returning the single
             # keypress, which hangs the picker rather than reacting.
