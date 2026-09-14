@@ -107,6 +107,11 @@
     homebrew_installed_packages: "{{ (devseed_brew | default({})).formulae | default([]) }}"
     homebrew_taps: []
     homebrew_cask_apps: "{{ (devseed_brew | default({})).casks | default([]) }}"
+    # An app already sitting in /Applications is the normal case on a
+    # machine that is not box-fresh — Chrome, installed by hand before
+    # devseed ran, otherwise fails the whole brew step with "It seems
+    # there is already an App at ...". Adopt it instead.
+    homebrew_cask_accept_external_apps: true
     homebrew_upgrade_all_packages: false
     homebrew_use_brewfile: false
 

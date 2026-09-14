@@ -381,8 +381,13 @@ run_ansible() { # $1 skip_json, $2 unattended, $3... extra ansible args
   local blob
   blob="{\"devseed_skip_ids\": $skip_json, \"devseed_unattended\": $unattended, \"devseed_uv_bin\": \"$(uv_bin)\"}"
   local pw=""
-  if sudo -n true 2>/dev/null; then
-    : # passwordless sudo — nothing to ask
+  # NOT `sudo -n true`: that only proves a timestamp is currently valid,
+  # which is true right after any other sudo and says nothing about the
+  # no-terminal context Homebrew runs installer(8) in. Ask sudo what the
+  # ruleset actually says instead, so a live timestamp cannot trick us out
+  # of collecting a password we will need.
+  if sudo -n -l 2>/dev/null | grep -q NOPASSWD; then
+    : # genuinely passwordless sudo — nothing to ask
   elif [ -t 0 ] && [ "$unattended" != 1 ]; then
     printf 'devseed: sudo password (asked once, kept in memory only): '
     read -rs pw
