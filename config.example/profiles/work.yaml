@@ -1,0 +1,17 @@
+# Demo profile: `devseed apply work` stacks this over config.yaml.
+# Same schema as config.yaml; lists merge (union / keyed last-wins),
+# scalars override.
+
+enabled_tags: []          # e.g. [backend] to switch on tagged steps
+
+brew:
+  formulae:
+    - tree
+
+steps: []
+#  - id: corp-clis        # a bash extension step living in THIS repo
+#    kind: script
+#    order: 65
+#    title: Corp CLIs
+#    file: scripts/corp-clis.sh
+#    changed_when: false

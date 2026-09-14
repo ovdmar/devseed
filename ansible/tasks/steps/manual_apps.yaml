@@ -1,0 +1,19 @@
+---
+# Report-only: apps installed by hand (vendor sites, licenses). Never
+# auto-downloaded; the summary tells the human what is still missing.
+- name: Check which manual apps are present
+  ansible.builtin.stat:
+    path: "/Applications/{{ item.name }}.app"
+  loop: "{{ devseed_manual_apps | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: devseed_manual_stat
+
+- name: Report missing manual apps
+  ansible.builtin.debug:
+    msg: >-
+      MANUAL INSTALL NEEDED: {{ item.item.name }}
+      {{ '(' + item.item.url + ')' if item.item.url is defined else '' }}
+  loop: "{{ devseed_manual_stat.results | default([]) | rejectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"

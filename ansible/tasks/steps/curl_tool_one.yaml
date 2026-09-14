@@ -1,0 +1,55 @@
+---
+- name: "Check installed version stamp of {{ tool.name }}"
+  ansible.builtin.stat:
+    path: "~/{{ tool.dest }}/.devseed-{{ tool.name }}-{{ tool.version }}"
+  register: devseed_tool_stamp
+
+- name: "Install pinned tool {{ tool.name }}"
+  when: not devseed_tool_stamp.stat.exists
+  block:
+    - name: "Download, sha256-verified: {{ tool.name }}"
+      ansible.builtin.get_url:
+        url: "{{ tool.url }}"
+        dest: "/tmp/devseed-{{ tool.name }}-{{ tool.version }}{{ '.tar.gz' if tool.type == 'tar' else '' }}"
+        checksum: "sha256:{{ tool.sha256 }}"
+        mode: "0644"
+      changed_when: true
+
+    - name: "Ensure destination directory for {{ tool.name }}"
+      ansible.builtin.file:
+        path: "~/{{ tool.dest }}"
+        state: directory
+        mode: "0755"
+
+    # ansible's unarchive demands GNU tar for tarballs and stock macOS
+    # only has bsdtar — plain tar it is.
+    - name: "Extract tarball of {{ tool.name }}" # noqa: command-instead-of-module
+      ansible.builtin.command:
+        cmd: >-
+          tar -xzf /tmp/devseed-{{ tool.name }}-{{ tool.version }}.tar.gz
+          -C {{ ('~/' + tool.dest) | expanduser }}
+          {{ ('--strip-components=' + ((tool.strip_path.split('/') | length - 1) | string))
+             if tool.strip_path is defined else '' }}
+          {{ tool.strip_path | default('') }}
+      when: tool.type == 'tar'
+      changed_when: true
+
+    - name: "Place raw binary of {{ tool.name }}"
+      ansible.builtin.copy:
+        src: "/tmp/devseed-{{ tool.name }}-{{ tool.version }}"
+        remote_src: true
+        dest: "~/{{ tool.dest }}/{{ tool.name }}"
+        mode: "0755"
+      when: tool.type == 'raw'
+
+    - name: "Mark executable: {{ tool.name }}"
+      ansible.builtin.file:
+        path: "~/{{ tool.dest }}/{{ tool.name }}"
+        mode: "0755"
+      when: tool.type == 'tar'
+
+    - name: "Stamp installed version of {{ tool.name }}"
+      ansible.builtin.copy:
+        content: "{{ tool.sha256 }}\n"
+        dest: "~/{{ tool.dest }}/.devseed-{{ tool.name }}-{{ tool.version }}"
+        mode: "0644"

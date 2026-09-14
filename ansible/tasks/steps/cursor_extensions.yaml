@@ -1,0 +1,20 @@
+---
+# Editor extensions. The same list is installed into every editor that is
+# present, so a machine with both Cursor and VS Code ends up with matching
+# extension sets rather than whichever one happened to be configured.
+#
+# The key is still `cursor_extensions` because that is what the config
+# calls it; the list is editor-agnostic.
+- name: Install editor extensions
+  ansible.builtin.include_tasks: editor_extensions_one.yaml
+  loop:
+    - name: Cursor
+      cli: cursor
+      app: Cursor.app
+    - name: VS Code
+      cli: code
+      app: Visual Studio Code.app
+  loop_control:
+    loop_var: editor
+    label: "{{ editor.name }}"
+  when: (devseed_cursor_extensions | default([])) | length > 0

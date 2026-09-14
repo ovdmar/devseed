@@ -1,0 +1,5 @@
+enabled_tags: [backend]
+
+brew:
+  formulae:
+    - wget

@@ -1,0 +1,40 @@
+---
+# Clone declared repositories; existing checkouts are left alone
+# (update: false — pulling is a human decision). A repo that cannot be
+# cloned (no access, dead host) is reported, not fatal: losing access to
+# one remote must never block a whole machine setup.
+# A failed parent (e.g. a broken symlink in the way) surfaces as that
+# repo's clone failure below — never as a step abort.
+- name: Ensure repo parent directories exist # noqa: ignore-errors — a bad parent becomes that repo's reported clone failure, not a step abort
+  ansible.builtin.file:
+    path: "{{ item.dest | expanduser | dirname }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ devseed_git_repos | default([]) }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  ignore_errors: true
+
+- name: Clone git repositories # noqa: latest[git] ignore-errors — clone once, never pull; per-repo failures are reported below
+  ansible.builtin.git:
+    repo: "{{ item.url }}"
+    dest: "{{ item.dest | expanduser }}"
+    update: false
+    accept_newhostkey: true
+    # unreachable hosts (VPN-only remotes, revoked access) fail in seconds,
+    # not TCP-timeout minutes; BatchMode blocks password prompts
+    ssh_opts: "-o BatchMode=yes -o ConnectTimeout=10"
+  loop: "{{ devseed_git_repos | default([]) }}"
+  loop_control:
+    label: "{{ item.dest }}"
+  environment:
+    GIT_TERMINAL_PROMPT: "0"
+  register: devseed_repos_result
+  ignore_errors: true
+
+- name: Report failed clones
+  ansible.builtin.debug:
+    msg: "CLONE FAILED: {{ item.item.dest }} ({{ item.item.url }}) — check access/VPN, then re-run"
+  loop: "{{ devseed_repos_result.results | default([]) | selectattr('failed') | list }}"
+  loop_control:
+    label: "{{ item.item.dest }}"

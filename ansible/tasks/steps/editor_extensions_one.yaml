@@ -1,0 +1,71 @@
+---
+# One editor's extension set. Included per editor from
+# cursor_extensions.yaml, so `editor` is always defined here.
+#
+# `--install-extension` exits 0 whether or not it changed anything, so the
+# installed set is listed first and only the missing ones are installed.
+# Installing unconditionally would report changed on every apply and fail
+# the idempotency gate.
+- name: "Locate the editor CLI for {{ editor.name }}"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -u
+      if command -v {{ editor.cli }} >/dev/null 2>&1; then
+        command -v {{ editor.cli }}
+        exit 0
+      fi
+      # On a fresh Mac the shim is not on PATH until the app has been
+      # opened and "Install '{{ editor.cli }}' command" run, so fall back
+      # to the CLI inside the bundle the cask installs.
+      for p in "$HOME/Applications/{{ editor.app }}/Contents/Resources/app/bin/{{ editor.cli }}" \
+               "/Applications/{{ editor.app }}/Contents/Resources/app/bin/{{ editor.cli }}"; do
+        if [ -x "$p" ]; then
+          printf '%s\n' "$p"
+          exit 0
+        fi
+      done
+      exit 1
+  register: devseed_editor_cli
+  changed_when: false
+  failed_when: false
+  environment:
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+
+- name: "Report extensions pending an install of {{ editor.name }}"
+  ansible.builtin.debug:
+    msg: >-
+      EDITOR EXTENSIONS PENDING: {{ editor.name }} is not installed, so
+      {{ (devseed_cursor_extensions | default([])) | length }} extension(s)
+      were skipped for it. Install it, then re-run `devseed apply`.
+  when: devseed_editor_cli.rc | default(1) != 0
+
+- name: "List installed extensions for {{ editor.name }}"
+  ansible.builtin.command:
+    cmd: "{{ devseed_editor_cli.stdout }} --list-extensions"
+  register: devseed_editor_installed
+  changed_when: false
+  failed_when: false
+  when: devseed_editor_cli.rc | default(1) == 0
+
+# Marketplace ids are case-insensitive and --list-extensions does not
+# guarantee the case a config author typed, so compare lowercased.
+- name: "Install missing extensions for {{ editor.name }}"
+  ansible.builtin.command:
+    cmd: "{{ devseed_editor_cli.stdout }} --install-extension {{ item }}"
+  loop: "{{ devseed_cursor_extensions | default([]) }}"
+  when:
+    - devseed_editor_cli.rc | default(1) == 0
+    - (item | lower) not in ((devseed_editor_installed.stdout | default('')) | lower).split('\n')
+  changed_when: true
+  register: devseed_editor_result
+  failed_when: false
+
+- name: "Report extensions that failed for {{ editor.name }}"
+  ansible.builtin.debug:
+    msg: >-
+      EDITOR EXTENSION FAILED: {{ item.item }} for {{ editor.name }} —
+      install it from the extensions pane, then re-run `devseed apply`.
+  loop: "{{ devseed_editor_result.results | default([]) | selectattr('rc', 'defined') | rejectattr('rc', 'eq', 0) | list }}"
+  loop_control:
+    label: "{{ item.item }}"

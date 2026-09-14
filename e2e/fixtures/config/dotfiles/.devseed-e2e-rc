@@ -1,0 +1,2 @@
+# managed by devseed e2e fixture
+export DEVSEED_E2E=1

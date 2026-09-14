@@ -1,0 +1,34 @@
+---
+# Plain whole-file copies from the config repo; the resolver's file map
+# already decided which layer owns each file (last in stack wins).
+#
+# Parent directories are CREATED when missing and otherwise left strictly
+# alone. Top-level dotfiles (.gitconfig, .zprofile) have $HOME as their
+# parent, and macOS ships home directories as drwxr-x---; a blanket
+# `file: state=directory mode: 0755` over every parent silently made the
+# whole home directory world-readable on the first apply.
+- name: Check dotfile parent directories
+  ansible.builtin.stat:
+    path: "{{ ('~/' + item.key) | expanduser | dirname }}"
+  loop: "{{ devseed_dotfiles_map | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: devseed_dotfile_parents
+
+- name: Create missing dotfile parent directories
+  ansible.builtin.file:
+    path: "{{ ('~/' + item.item.key) | expanduser | dirname }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ devseed_dotfile_parents.results | default([]) | rejectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+
+- name: Copy dotfiles
+  ansible.builtin.copy:
+    src: "{{ item.value }}"
+    dest: "~/{{ item.key }}"
+    mode: preserve
+  loop: "{{ devseed_dotfiles_map | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"

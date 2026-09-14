@@ -1,0 +1,26 @@
+---
+- name: Write macOS defaults
+  community.general.osx_defaults:
+    domain: "{{ item.domain }}"
+    key: "{{ item.key }}"
+    type: "{{ item.type }}"
+    value: "{{ item.value }}"
+    host: "{{ item.host | default(omit) }}"
+  loop: "{{ devseed_macos_defaults | default([]) }}"
+  loop_control:
+    label: "{{ item.domain }} {{ item.key }}"
+  register: devseed_defaults_result
+
+- name: Restart apps whose domains changed
+  ansible.builtin.command:
+    cmd: "killall {{ item.value }}"
+  loop: "{{ (devseed_defaults_restart | default({})) | dict2items }}"
+  loop_control:
+    label: "{{ item.value }}"
+  when: >-
+    devseed_defaults_result.results | default([])
+    | selectattr('changed')
+    | map(attribute='item.domain')
+    | select('eq', item.key) | list | length > 0
+  changed_when: false
+  failed_when: false

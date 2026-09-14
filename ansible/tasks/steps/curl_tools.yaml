@@ -1,0 +1,12 @@
+---
+# Checksum-pinned curl tools. Rows are keyed by name+arch; only rows for
+# this machine's architecture apply. The installed binary is the creates
+# guard — version bumps change dest content via the pinned URL/sha.
+- name: Install pinned curl tools
+  ansible.builtin.include_tasks: curl_tool_one.yaml
+  loop: >-
+    {{ devseed_curl_tools | default([])
+       | selectattr('arch', 'eq', ansible_facts.machine) | list }}
+  loop_control:
+    loop_var: tool
+    label: "{{ tool.name }} {{ tool.version | default('') }}"

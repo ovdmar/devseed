@@ -1,0 +1,46 @@
+# devseed config — base layer. Every key is optional; an empty file is a
+# valid, plug & play config. Profiles in profiles/<name>.yaml use this
+# exact same schema and stack on top (last wins), e.g.:
+#   devseed apply work
+#
+# The engine's default pipeline (ansible/steps.yaml) can be reshaped from
+# here via `steps:` rows — reorder (order:), disable (absent: true), or
+# add your own `run` / `script` / `manual` steps.
+
+identity:
+  git_name: Your Name
+  git_email: you@example.com
+
+workspace_path: ~/workspace
+
+brew:
+  taps: []
+  formulae:
+    - jq
+  casks: []
+
+uv_tools: []
+npm_globals: []
+
+git_repos: []
+#  - dest: "{workspace}/dotfiles"
+#    url: git@github.com:you/dotfiles.git
+
+dotfiles:
+  files: []
+#    - .zshrc            # payload lives at dotfiles/.zshrc in this repo
+
+macos_defaults: []
+#  - domain: com.apple.dock
+#    key: autohide
+#    type: bool
+#    value: true
+
+login_items: []
+manual_apps: []
+extras: []
+
+# Editor extensions, installed with the `cursor` CLI. Skipped with a
+# follow-up notice when Cursor is not installed yet.
+# cursor_extensions:
+#   - golang.go

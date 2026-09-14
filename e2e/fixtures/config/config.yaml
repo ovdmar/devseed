@@ -1,0 +1,87 @@
+# e2e fixture: exercises every builtin + custom step kinds.
+identity:
+  git_name: Devseed E2E
+  git_email: e2e@devseed.test
+
+workspace_path: ~/e2e-workspace
+
+prereqs:
+  - id: vpn-like
+    kind: cmd
+    cmd: "false"
+    required: false
+    why: exercise the optional-warn path
+    fix: This warning is expected in e2e.
+
+brew:
+  # A third-party tap plus a cask from it: brew >= 7 refuses these unless
+  # the tap is trusted first, and the trust command exists only on brew >= 7.
+  # Keeps the trust/version handshake in brew.yaml covered by the suite.
+  taps:
+    - open-cli-collective/tap
+  formulae:
+    - tree
+  casks:
+    - jira-ticket-cli
+
+# The template VM has Cursor, so this exercises the locate/list/install
+# path rather than only the "not installed" branch.
+cursor_extensions:
+  - waderyan.gitblame
+
+uv_tools:
+  - pycowsay
+
+npm_globals:
+  - json
+
+git_repos:
+  - dest: "{workspace}/hello"
+    url: https://github.com/octocat/Hello-World.git
+
+dotfiles:
+  files:
+    - .devseed-e2e-rc
+    # nested on purpose: a top-level dotfile's parent is $HOME, which always
+    # exists, so only a nested one exercises parent creation at all
+    - .config/devseed-e2e/nested.conf
+
+macos_defaults:
+  - domain: com.apple.dock
+    key: autohide
+    type: bool
+    value: true
+defaults_restart:
+  com.apple.dock: Dock
+
+manual_apps:
+  - name: Elgato Camera Hub
+    url: https://www.elgato.com/downloads
+
+extras:
+  - key: hello-ext
+    label: Hello extra (cask)
+    kind: cask
+    cask: appcleaner
+
+steps:
+  - id: marker-script
+    kind: script
+    order: 45
+    title: Marker script
+    file: scripts/marker.sh
+    creates: ~/.devseed-e2e-marker
+
+  - id: import-settings
+    kind: manual
+    order: 95
+    title: Import app settings
+    instructions: Pretend to import settings, then continue.
+
+  - id: backend-probe
+    kind: run
+    order: 46
+    title: Backend probe
+    cmd: touch /Users/admin/.devseed-e2e-backend
+    creates: ~/.devseed-e2e-backend
+    tags: [backend]

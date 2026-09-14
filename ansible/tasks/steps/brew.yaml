@@ -1,0 +1,196 @@
+---
+# Homebrew: installation (if absent) and declared packages, via the
+# pinned geerlingguy.mac.homebrew role. Upgrades stay a human decision
+# (`brew upgrade`), so re-runs are cheap and idempotent.
+#
+# Four phases, because modern brew refuses formulae and casks from
+# untrusted third-party taps: (1) ensure the brew binary exists, (2) make
+# sure that brew is new enough to HAVE `brew trust`, (3) `brew trust`
+# every declared tap — declaring a tap in your config IS the trust
+# decision, (4) full role run (taps, formulae, casks).
+- name: Ensure Homebrew itself
+  ansible.builtin.include_role:
+    name: geerlingguy.mac.homebrew
+  vars:
+    homebrew_installed_packages: []
+    homebrew_taps: []
+    homebrew_cask_apps: []
+    homebrew_upgrade_all_packages: false
+    homebrew_use_brewfile: false
+
+- name: Locate brew and collect declared taps
+  ansible.builtin.set_fact:
+    devseed_brew_bin: >-
+      {{ (ansible_facts.machine == 'arm64')
+         | ternary('/opt/homebrew/bin/brew', '/usr/local/bin/brew') }}
+    devseed_brew_prefix: >-
+      {{ (ansible_facts.machine == 'arm64')
+         | ternary('/opt/homebrew', '/usr/local') }}
+    devseed_brew_taps: "{{ (devseed_brew | default({})).taps | default([]) }}"
+
+# `brew trust` only exists from brew 7 on, and only brew >= 7 enforces
+# trust. A machine carrying an older brew (macOS images routinely do)
+# used to fail the trust call silently; brew then auto-updated ITSELF
+# partway through the first cask install, and the now-current brew
+# refused every third-party tap against a trust list we never wrote.
+# Settle the brew version up front so trust and installs agree.
+- name: Read the Homebrew version
+  ansible.builtin.command:
+    cmd: "{{ devseed_brew_bin }} --version"
+  register: devseed_brew_version
+  changed_when: false
+  when: devseed_brew_taps | length > 0
+
+- name: Update Homebrew when it predates tap trust
+  ansible.builtin.command:
+    cmd: "{{ devseed_brew_bin }} update --force"
+  register: devseed_brew_update
+  changed_when: false # brew's own version is not config state
+  when:
+    - devseed_brew_taps | length > 0
+    - >-
+      devseed_brew_version.stdout_lines
+      | select('match', '^Homebrew [0-9]')
+      | first | default('Homebrew 0')
+      | regex_replace('^Homebrew ([0-9]+).*$', '\1') | int < 7
+
+- name: Read the effective Homebrew version
+  ansible.builtin.command:
+    cmd: "{{ devseed_brew_bin }} --version"
+  register: devseed_brew_effective
+  changed_when: false
+  when: devseed_brew_taps | length > 0
+
+- name: Record whether this Homebrew enforces tap trust
+  ansible.builtin.set_fact:
+    devseed_brew_trusts: >-
+      {{ devseed_brew_effective.stdout_lines
+         | select('match', '^Homebrew [0-9]')
+         | first | default('Homebrew 0')
+         | regex_replace('^Homebrew ([0-9]+).*$', '\1') | int >= 7 }}
+  when: devseed_brew_taps | length > 0
+
+- name: Note that this Homebrew predates tap trust
+  ansible.builtin.debug:
+    msg: >-
+      This Homebrew has no `brew trust`, so declared taps are used as-is.
+      Upgrade Homebrew if third-party formulae or casks are refused.
+  when:
+    - devseed_brew_taps | length > 0
+    - not (devseed_brew_trusts | default(false) | bool)
+
+# No failed_when override: a refused trust means the tap's formulae and
+# casks will be refused later too, so fail here with the real reason.
+- name: Trust declared third-party taps
+  ansible.builtin.command:
+    cmd: "{{ devseed_brew_bin }} trust {{ item }}"
+  loop: "{{ devseed_brew_taps }}"
+  changed_when: false # trust is idempotent metadata; keeps re-apply at changed=0
+  when: devseed_brew_trusts | default(false) | bool
+
+# brew >= 7 hard-fails `brew tap` when a third-party tap has formulae its
+# current audit dislikes; HOMEBREW_DEVELOPER downgrades that to warnings.
+# Scoped to tapping only — the role below installs with a normal env.
+- name: Tap declared taps
+  ansible.builtin.command:
+    cmd: "{{ devseed_brew_bin }} tap {{ item }}"
+    creates: "{{ devseed_brew_prefix }}/Library/Taps/{{ item.split('/') | first }}/homebrew-{{ item.split('/') | last }}"
+  loop: "{{ devseed_brew_taps }}"
+  environment:
+    HOMEBREW_DEVELOPER: "1"
+    HOMEBREW_NO_AUTO_UPDATE: "1"
+
+- name: Homebrew packages
+  ansible.builtin.include_role:
+    name: geerlingguy.mac.homebrew
+  vars:
+    homebrew_installed_packages: "{{ (devseed_brew | default({})).formulae | default([]) }}"
+    homebrew_taps: []
+    homebrew_cask_apps: "{{ (devseed_brew | default({})).casks | default([]) }}"
+    homebrew_upgrade_all_packages: false
+    homebrew_use_brewfile: false
+
+# mas needs a signed-in App Store account. Without one, `mas install` can
+# HANG forever (observed: 6h in a VM), so every mas task carries a hard
+# timeout, and failures/timeouts are reported, never fatal — sign in and
+# re-run picks them up.
+- name: App Store apps (mas)
+  when: ((devseed_brew | default({})).mas | default([])) | length > 0
+  block:
+    - name: Ensure mas is installed
+      community.general.homebrew:
+        name: mas
+        state: present
+      timeout: 600
+
+    - name: List installed mas apps
+      ansible.builtin.command:
+        cmd: mas list
+      register: devseed_mas_list
+      changed_when: false
+      failed_when: false
+      timeout: 60
+      environment:
+        PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+
+# One script so we can gate and short-circuit. Discovery first: on modern
+# macOS the App Store account rides the iCloud Apple ID (MobileMeAccounts)
+# — `mas account` no longer exists, and without an account `mas install`
+# HANGS 10+ minutes per app. No account => skip every install instantly
+# and record them as pending. Signed in => install, stopping after the
+# first failure (likely account/entitlement trouble; retrying the rest
+# helps nobody). Pending apps land in state/mas-pending.txt; the devseed
+# CLI prints a follow-up at the end.
+    - name: Install mas apps (account-gated, stop on first failure)
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -u -o pipefail
+          pending_file="$HOME/.devseed/state/mas-pending.txt"
+          mkdir -p "$(dirname "$pending_file")"; : > "$pending_file"
+          signed_in=0
+          defaults read MobileMeAccounts Accounts 2>/dev/null | grep -q AccountID && signed_in=1
+          installed=$(cat <<'LIST_EOF'
+          {{ devseed_mas_list.stdout | default('') }}
+          LIST_EOF
+          )
+          changed=0; stopped=0
+          while IFS='|' read -r id name; do
+            [ -n "$id" ] || continue
+            case "$installed" in *"$id"*) continue ;; esac
+            if [ "$signed_in" = 0 ] || [ "$stopped" = 1 ]; then
+              printf '%s\n' "$name" >> "$pending_file"; continue
+            fi
+            if mas install "$id" >/dev/null 2>&1; then
+              changed=$((changed + 1))
+            else
+              printf '%s\n' "$name" >> "$pending_file"
+              stopped=1   # first failure: stop burning time; report the rest
+            fi
+          done <<'APPS_EOF'
+          {% for app in (devseed_brew | default({})).mas | default([]) %}
+          {{ app.id }}|{{ app.name | default(app.id) }}
+          {% endfor %}
+          APPS_EOF
+          echo "mas_changed=$changed"
+          [ "$signed_in" = 0 ] && echo "mas_skipped=no-apple-account"
+          [ -s "$pending_file" ] && echo "MAS PENDING: $(paste -sd, "$pending_file")"
+          exit 0
+      register: devseed_mas_run
+      changed_when: "'mas_changed=0' not in devseed_mas_run.stdout"
+      timeout: 900
+      environment:
+        PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+
+    - name: Report pending mas installs
+      ansible.builtin.debug:
+        msg: >-
+          {{ devseed_mas_run.stdout_lines | select('match', '^MAS PENDING') | first }}
+          — sign in to the App Store, then re-run `devseed apply`.
+      when: devseed_mas_run.stdout is search('MAS PENDING')
+  rescue:
+    - name: Report mas step interruption
+      ansible.builtin.debug:
+        msg: >-
+          MAS STEP TIMED OUT or failed — sign in to the App Store and
+          re-run `devseed apply`. Remaining steps continue.

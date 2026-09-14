@@ -1,0 +1,66 @@
+---
+- name: Read current login items
+  ansible.builtin.command:
+    cmd: osascript -e 'tell application "System Events" to get the name of every login item'
+  register: devseed_login_current
+  changed_when: false
+  failed_when: false
+
+- name: Warn when login items are unreadable (Automation permission)
+  ansible.builtin.debug:
+    msg: >-
+      Cannot read login items — grant Automation permission to the terminal
+      in System Settings > Privacy & Security > Automation, then re-run.
+  when: devseed_login_current.rc != 0
+
+# A login item for an app that is not installed yet is worse than useless:
+# `make login item` on a missing bundle either errors — which run_step
+# escalates into a whole-run abort — or silently creates an entry that never
+# appears in the list, so every later apply tries again and reports changed.
+# Register only what exists, and report the rest as follow-ups. Several
+# login items are apps devseed never installs (manual_apps), so on a fresh
+# Mac this is the normal case, not an edge case.
+- name: Check which login-item apps are installed
+  ansible.builtin.stat:
+    path: "/Applications/{{ item }}.app"
+  loop: "{{ devseed_login_items | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  register: devseed_login_stat
+  when: devseed_login_current.rc == 0
+
+- name: Split login items into installed and missing
+  ansible.builtin.set_fact:
+    devseed_login_present: >-
+      {{ devseed_login_stat.results | default([]) | selectattr('stat', 'defined')
+         | selectattr('stat.exists') | map(attribute='item') | list }}
+    devseed_login_missing: >-
+      {{ devseed_login_stat.results | default([]) | selectattr('stat', 'defined')
+         | rejectattr('stat.exists') | map(attribute='item') | list }}
+
+- name: Register login items
+  ansible.builtin.command:
+    cmd: >-
+      osascript -e 'tell application "System Events" to make login item at end with properties
+      {path:"/Applications/{{ item }}.app", hidden:false}'
+  loop: "{{ devseed_login_present | default([]) }}"
+  when: item not in (devseed_login_current.stdout | default(''))
+  changed_when: true
+  register: devseed_login_add
+  failed_when: false
+
+- name: Report login items whose app is not installed yet
+  ansible.builtin.debug:
+    msg: >-
+      LOGIN ITEM PENDING: {{ item }} — /Applications/{{ item }}.app is not
+      installed yet. Install it, then re-run `devseed apply`.
+  loop: "{{ devseed_login_missing | default([]) }}"
+
+- name: Report login items that could not be registered
+  ansible.builtin.debug:
+    msg: >-
+      LOGIN ITEM FAILED: {{ item.item }} — add it by hand in
+      System Settings > General > Login Items.
+  loop: "{{ devseed_login_add.results | default([]) | selectattr('rc', 'defined') | rejectattr('rc', 'eq', 0) | list }}"
+  loop_control:
+    label: "{{ item.item }}"

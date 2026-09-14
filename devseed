@@ -1,0 +1,528 @@
+#!/bin/bash
+# devseed — thin pipeline executor.
+#
+# Fixed, config-free bootstrap (CLT check, uv -> venv -> ansible -> galaxy),
+# then: resolve the profile stack into one vars file, run the prereq table
+# (fail fast, before any mutation), and run the resolved step pipeline
+# through ansible. Everything customizable lives in the config repo
+# (~/.devseed/config); this script encodes no onboarding.
+#
+# Must run on a virgin Mac: keep it bash 3.2 compatible.
+set -euo pipefail
+
+# Pinned toolchain (verified 2026-09-14).
+UV_VERSION="0.12.13"
+UV_SHA256_ARM64="7e6ddb9316acc00f2296c82ff4d99977870ee34b2f0ddcae9444d714db9364ed"
+UV_SHA256_X86_64="5e287ef61cb6a9b61b3a83fef124fd143e400468a7dac794230147a810e17119"
+ANSIBLE_CORE_PIN="2.21.4"
+VENV_PYTHON="3.12"
+
+# --- paths -------------------------------------------------------------
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  case "$SOURCE" in /*) ;; *) SOURCE="$DIR/$SOURCE" ;; esac
+done
+ENGINE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+DEVSEED_ROOT="${DEVSEED_ROOT:-$HOME/.devseed}"
+STATE_DIR="$DEVSEED_ROOT/state"
+VENV="$STATE_DIR/venv"
+RESOLVED="$STATE_DIR/resolved.yaml"
+
+# Shared with lib/preflight.sh. Onboarding may need the GitHub chain
+# before any prereq table exists, so it lives in its own file.
+gh_say() { log "$*"; } # log() is defined below; resolved at call time
+# shellcheck source=lib/github.sh
+. "$ENGINE_DIR/lib/github.sh"
+
+config_dir() {
+  if [ -d "$DEVSEED_ROOT/config" ]; then
+    echo "$DEVSEED_ROOT/config"
+  else
+    echo "$ENGINE_DIR/config.reference"
+  fi
+}
+
+# Try the clone first: a public repo over HTTPS needs no credentials at
+# all, so pre-emptively authenticating would tax the common case. Only a
+# GitHub clone that actually failed escalates to setting up access and
+# retrying once. GIT_TERMINAL_PROMPT=0 makes a private HTTPS clone fail
+# fast instead of prompting for a password GitHub no longer accepts.
+clone_config() { # $1 git URL
+  local src="$1"
+  if GIT_TERMINAL_PROMPT=0 git clone "$src" "$DEVSEED_ROOT/config" 2>/dev/null; then
+    log "cloned $src -> $DEVSEED_ROOT/config"
+    return 0
+  fi
+  case "$src" in
+    *github.com*) ;;
+    *) die "clone failed: $src" ;;
+  esac
+  log "clone failed — setting up GitHub access, then retrying"
+  github_autofix
+  rm -rf "$DEVSEED_ROOT/config" # a failed clone can leave a partial tree
+  GIT_TERMINAL_PROMPT=0 git clone "$src" "$DEVSEED_ROOT/config" \
+    || die "clone still failing after GitHub setup: $src
+  Check that the repository exists and your account can read it."
+  log "cloned $src -> $DEVSEED_ROOT/config"
+}
+
+# First run without a personal config: offer to link an existing one
+# (git URL or local path) or build one from the shipped reference config
+# via per-category selection. Skipped entirely when a config exists;
+# non-interactive runs fall back to the reference config read-only.
+onboard_config() {
+  [ -d "$DEVSEED_ROOT/config" ] && return 0
+  if [ ! -t 0 ] || [ "${1:-0}" = 1 ]; then
+    # config.reference is the maintainer's own config: a template to copy
+    # from, never something to apply. Falling back to it here was not
+    # "read-only" at all — the pipeline went on to write its git identity
+    # into the global gitconfig and copy its .gitconfig and .zprofile over
+    # the user's, unbacked. Refuse instead of provisioning a machine to
+    # look like someone else's.
+    die "no config at $DEVSEED_ROOT/config, and this run is non-interactive.
+  Clone or create your config there, or run devseed from a terminal to
+  build one from the reference config."
+  fi
+  log "no personal config found at $DEVSEED_ROOT/config"
+  printf 'devseed: [1] link an existing config (git URL or local path)\n'
+  printf 'devseed: [2] build one from the reference config (per-category selection)\n'
+  printf 'devseed: choice [2]: '
+  local choice src
+  read -r choice
+  case "$choice" in
+    1)
+      printf 'devseed: git URL or local path: '
+      read -r src
+      if [ -d "$src" ]; then
+        cp -R "$src" "$DEVSEED_ROOT/config"
+        log "copied $src -> $DEVSEED_ROOT/config"
+      else
+        clone_config "$src"
+      fi
+      ;;
+    *)
+      "$VENV/bin/python" "$ENGINE_DIR/lib/onboard.py" \
+        "$ENGINE_DIR/config.reference" "$DEVSEED_ROOT/config" || die "onboarding aborted"
+      ;;
+  esac
+}
+
+log() { printf 'devseed: %s\n' "$*"; }
+die() {
+  printf 'devseed: %s\n' "$*" >&2
+  exit 2
+}
+
+usage() {
+  cat <<'EOF'
+devseed — declarative Mac setup
+
+  devseed apply [PROFILE...] [--tags T1,T2] [--only IDS] [--except IDS]
+                [--base] [--yes] [--unattended] [--no-extras]
+  devseed diff  [PROFILE...] [--tags T1,T2]   # what would change (check mode)
+  devseed resolve [PROFILE...] [--tags T1,T2] # rebuild state/resolved.yaml
+  devseed doctor
+  devseed version | help
+
+Profiles stack in the order given and persist; bare `apply` reuses the
+last stack. `--base` resets to the base config only. `--yes` accepts all
+defaults (no prompts); `--unattended` additionally skips manual steps
+and reports them.
+EOF
+}
+
+# --- fixed bootstrap (config-free) --------------------------------------
+quick_checks() {
+  if ! curl -fsSI --max-time 10 https://github.com >/dev/null 2>&1; then
+    die "no network (https://github.com unreachable) — connect and re-run"
+  fi
+  if ! xcode-select -p >/dev/null 2>&1; then
+    log "Xcode Command Line Tools missing — triggering the installer."
+    log "Finish the dialog, then re-run devseed. (A quiet minute here is normal.)"
+    xcode-select --install >/dev/null 2>&1 || true
+    exit 3
+  fi
+}
+
+uv_bin() {
+  if command -v uv >/dev/null 2>&1; then
+    command -v uv
+  else
+    echo "$STATE_DIR/bin/uv"
+  fi
+}
+
+ensure_uv() {
+  [ -x "$(uv_bin)" ] && return 0
+  local arch tarball sha url tmp
+  arch="$(uname -m)"
+  case "$arch" in
+    arm64)
+      tarball="uv-aarch64-apple-darwin.tar.gz"
+      sha="$UV_SHA256_ARM64"
+      ;;
+    x86_64)
+      tarball="uv-x86_64-apple-darwin.tar.gz"
+      sha="$UV_SHA256_X86_64"
+      ;;
+    *) die "unsupported architecture: $arch" ;;
+  esac
+  url="https://github.com/astral-sh/uv/releases/download/$UV_VERSION/$tarball"
+  log "installing uv $UV_VERSION (pinned, sha256-verified)"
+  tmp="$(mktemp -d)"
+  curl -fsSL -o "$tmp/$tarball" "$url"
+  echo "$sha  $tmp/$tarball" | shasum -a 256 -c - >/dev/null || die "uv download failed checksum verification"
+  tar -xzf "$tmp/$tarball" -C "$tmp"
+  mkdir -p "$STATE_DIR/bin"
+  mv "$tmp"/uv-*/uv "$STATE_DIR/bin/uv"
+  rm -rf "$tmp"
+}
+
+ensure_venv() {
+  local marker="$VENV/.devseed-toolchain"
+  local want="ansible-core==$ANSIBLE_CORE_PIN python==$VENV_PYTHON"
+  [ -f "$marker" ] && [ "$(cat "$marker")" = "$want" ] && return 0
+  log "creating ansible venv (python $VENV_PYTHON, ansible-core $ANSIBLE_CORE_PIN)"
+  "$(uv_bin)" venv -q "$VENV" --python "$VENV_PYTHON"
+  "$(uv_bin)" pip install -q --python "$VENV/bin/python" "ansible-core==$ANSIBLE_CORE_PIN"
+  echo "$want" >"$marker"
+}
+
+ensure_collections() {
+  local marker="$STATE_DIR/collections/.devseed-requirements"
+  local want
+  want="$(shasum -a 256 "$ENGINE_DIR/ansible/requirements.yaml" | awk '{print $1}')"
+  [ -f "$marker" ] && [ "$(cat "$marker")" = "$want" ] && return 0
+  log "installing ansible collections (pinned)"
+  "$VENV/bin/ansible-galaxy" collection install -r "$ENGINE_DIR/ansible/requirements.yaml" \
+    -p "$STATE_DIR/collections" >/dev/null
+  echo "$want" >"$STATE_DIR/collections/.devseed-requirements"
+}
+
+bootstrap() {
+  mkdir -p "$STATE_DIR"
+  quick_checks
+  ensure_uv
+  ensure_venv
+  ensure_collections
+}
+
+# --- stack + resolve -----------------------------------------------------
+read_stack() { [ -f "$STATE_DIR/stack" ] && cat "$STATE_DIR/stack" || true; }
+read_extras() { [ -f "$STATE_DIR/extras" ] && tr '\n' ',' <"$STATE_DIR/extras" | sed 's/,$//' || true; }
+
+resolve_stack() { # $1 csv stack, $2 csv tags, $3 csv extras
+  "$VENV/bin/python" "$ENGINE_DIR/lib/resolve.py" resolve \
+    --engine "$ENGINE_DIR/ansible/steps.yaml" \
+    --config "$(config_dir)" \
+    --out "$RESOLVED" \
+    --stack "$1" --tags "$2" --extras "${3:-}"
+}
+
+res_get() { "$VENV/bin/python" "$ENGINE_DIR/lib/resolve.py" get "$RESOLVED" "$1"; }
+
+check_ids() { # $1 csv of step ids
+  local all id
+  all="$(res_get 'devseed_steps[*].id')"
+  for id in $(echo "$1" | tr ',' ' '); do
+    case "$all" in *"\"$id\""*) ;; *) die "unknown step id: $id (steps: $all)" ;; esac
+  done
+}
+
+# --- interactive phases ----------------------------------------------------
+# Customize prompt: per-run opt-out over the resolved steps. Deselections
+# map to the skip list; nothing is persisted.
+customize_skips() { # echoes csv of ids to skip ("" when none)
+  local ids n i answer picks
+  [ -t 0 ] || return 0
+  printf 'devseed: customize what gets applied? [y/N] ' >&2
+  read -r answer
+  case "$answer" in y | Y | yes) ;; *) return 0 ;; esac
+  ids="$(res_get 'devseed_steps[*].id' | "$VENV/bin/python" -c 'import json,sys; print("\n".join(json.load(sys.stdin)))')"
+  n=0
+  for i in $ids; do
+    n=$((n + 1))
+    printf 'devseed:   %2d) %s\n' "$n" "$i" >&2
+  done
+  printf 'devseed: numbers to SKIP this run (e.g. 2,5 — Enter for none): ' >&2
+  read -r picks
+  [ -n "$picks" ] || return 0
+  echo "$ids" | "$VENV/bin/python" -c '
+import sys
+ids = sys.stdin.read().split()
+picks = {int(x) for x in sys.argv[1].replace(",", " ").split()}
+print(",".join(ids[p - 1] for p in sorted(picks) if 1 <= p <= len(ids)))
+' "$picks"
+}
+
+# Extras menu: opt-in catalogue, already-selected remembered in state.
+extras_menu() { # echoes csv of chosen extra keys
+  local catalog remembered picks
+  remembered="$(read_extras)"
+  catalog="$(res_get 'devseed_extras[*].key' 2>/dev/null)" || {
+    echo "$remembered"
+    return 0
+  }
+  [ "$catalog" = "[]" ] && {
+    echo "$remembered"
+    return 0
+  }
+  if [ ! -t 0 ]; then
+    echo "$remembered"
+    return 0
+  fi
+  "$VENV/bin/python" - "$RESOLVED" "$remembered" <<'PYEOF' >&2
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+remembered = set(sys.argv[2].split(",")) if sys.argv[2] else set()
+print("devseed: optional extras (* = remembered):")
+for n, e in enumerate(d.get("devseed_extras") or [], 1):
+    mark = "*" if e.get("key") in remembered else " "
+    print(f"devseed:   {n:2d}){mark} {e.get('label', e.get('key'))}")
+PYEOF
+  printf 'devseed: extras to enable (e.g. 1,3 / Enter keeps remembered / 0 for none): ' >&2
+  read -r picks
+  if [ -z "$picks" ]; then
+    echo "$remembered"
+    return 0
+  fi
+  if [ "$picks" = "0" ]; then
+    echo ""
+    return 0
+  fi
+  "$VENV/bin/python" - "$RESOLVED" "$picks" <<'PYEOF'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+keys = [e.get("key") for e in d.get("devseed_extras") or []]
+picks = {int(x) for x in sys.argv[2].replace(",", " ").split()}
+print(",".join(keys[p - 1] for p in sorted(picks) if 1 <= p <= len(keys)))
+PYEOF
+}
+
+run_preflight() { # $1 unattended
+  local flag=""
+  [ "$1" = 1 ] && flag="--unattended"
+  DEVSEED_PY="$VENV/bin/python" bash "$ENGINE_DIR/lib/preflight.sh" "$RESOLVED" $flag
+}
+
+run_ansible() { # $1 skip_json, $2 unattended, $3... extra ansible args
+  local skip_json="$1" unattended="$2"
+  shift 2
+  local blob
+  blob="{\"devseed_skip_ids\": $skip_json, \"devseed_unattended\": $unattended, \"devseed_uv_bin\": \"$(uv_bin)\"}"
+  local pw=""
+  if sudo -n true 2>/dev/null; then
+    : # passwordless sudo — nothing to ask
+  elif [ -t 0 ] && [ "$unattended" != 1 ]; then
+    printf 'devseed: sudo password (asked once, kept in memory only): '
+    read -rs pw
+    printf '\n'
+    printf '%s\n' "$pw" | sudo -S -v 2>/dev/null || die "sudo password rejected"
+  else
+    log "warning: sudo needs a password and this run is non-interactive; escalating steps may fail"
+  fi
+  local rc=0
+  if [ -n "$pw" ]; then
+    ANSIBLE_CONFIG="$ENGINE_DIR/ansible/ansible.cfg" \
+      ANSIBLE_COLLECTIONS_PATH="$STATE_DIR/collections" \
+      ANSIBLE_LOG_PATH="$STATE_DIR/ansible.log" \
+      "$VENV/bin/ansible-playbook" -i localhost, "$ENGINE_DIR/ansible/playbook.yaml" \
+      -e "@$RESOLVED" -e "$blob" --become-password-file <(printf '%s' "$pw") "$@" || rc=$?
+    pw=""
+  else
+    ANSIBLE_CONFIG="$ENGINE_DIR/ansible/ansible.cfg" \
+      ANSIBLE_COLLECTIONS_PATH="$STATE_DIR/collections" \
+      ANSIBLE_LOG_PATH="$STATE_DIR/ansible.log" \
+      "$VENV/bin/ansible-playbook" -i localhost, "$ENGINE_DIR/ansible/playbook.yaml" \
+      -e "@$RESOLVED" -e "$blob" "$@" || rc=$?
+  fi
+  return "$rc"
+}
+
+# --- commands ------------------------------------------------------------
+parse_stack_args() { # sets: stack tags only except yes unattended reset noextras
+  stack="" tags="" only="" except="" yes=0 unattended=0 reset=0 noextras=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --tags)
+        tags="$2"
+        shift 2
+        ;;
+      --only)
+        only="$2"
+        shift 2
+        ;;
+      --except)
+        except="$2"
+        shift 2
+        ;;
+      --base)
+        reset=1
+        shift
+        ;;
+      --yes)
+        yes=1
+        shift
+        ;;
+      --unattended)
+        unattended=1
+        yes=1
+        shift
+        ;;
+      --no-extras)
+        noextras=1
+        shift
+        ;;
+      --*) die "unknown flag $1" ;;
+      *)
+        stack="${stack:+$stack,}$1"
+        shift
+        ;;
+    esac
+  done
+  [ "$reset" = 1 ] && [ -n "$stack" ] && die "--base and profiles are mutually exclusive"
+  if [ "$reset" = 0 ] && [ -z "$stack" ]; then stack="$(read_stack)"; fi
+  return 0
+}
+
+skips_json() { # $1 only csv, $2 except csv, $3 customize csv -> compact json list
+  "$VENV/bin/python" - "$(res_get 'devseed_steps[*].id')" "$1" "$2" "$3" <<'PYEOF'
+import json, sys
+all_ids = json.loads(sys.argv[1])
+only = [x for x in sys.argv[2].split(",") if x]
+exc = [x for x in sys.argv[3].split(",") if x]
+custom = [x for x in sys.argv[4].split(",") if x]
+skip = set(exc) | set(custom)
+if only:
+    skip |= {i for i in all_ids if i not in only}
+print(json.dumps(sorted(skip)))
+PYEOF
+}
+
+cmd_apply() {
+  local stack tags only except yes unattended reset noextras
+  parse_stack_args "$@"
+
+  local t0=$SECONDS
+  bootstrap
+  # Before onboarding, not inside bootstrap: `devseed diff` shares bootstrap
+  # and must not install anything. Doing it here means gh is available to
+  # the config clone AND to the github prereq row, so the GitHub chain
+  # completes on this apply rather than needing a second one.
+  ensure_brew || log "warning: Homebrew not available yet — the brew step will install it"
+  onboard_config "$yes"
+
+  local extras="" extras_chosen=0
+  if [ "$noextras" = 0 ]; then
+    if [ "$yes" = 1 ]; then
+      extras="$(read_extras)"
+    else
+      resolve_stack "$stack" "$tags" # extras menu needs the catalogue
+      extras="$(extras_menu)"
+      extras_chosen=1
+    fi
+  fi
+  resolve_stack "$stack" "$tags" "$extras"
+
+  [ -n "$only" ] && check_ids "$only"
+  [ -n "$except" ] && check_ids "$except"
+  local custom=""
+  [ "$yes" = 0 ] && custom="$(customize_skips)"
+  local skip_json
+  skip_json="$(skips_json "$only" "$except" "$custom")"
+
+  log "stack: base${stack:+ + $(echo "$stack" | tr ',' ' ')}"
+  run_preflight "$unattended"
+
+  if run_ansible "$skip_json" "$unattended"; then
+    if [ "$reset" = 1 ]; then
+      rm -f "$STATE_DIR/stack"
+    elif [ -n "$stack" ]; then
+      printf '%s\n' "$stack" | tr ',' '\n' >"$STATE_DIR/stack.tmp"
+      paste -sd, "$STATE_DIR/stack.tmp" >"$STATE_DIR/stack" && rm -f "$STATE_DIR/stack.tmp"
+    fi
+    if [ "$extras_chosen" = 1 ]; then
+      # The menu's answer is authoritative, including "0 for none" — which
+      # has to be able to CLEAR a remembered selection. Guarding this write
+      # on a non-empty value made deselection impossible: the set could only
+      # ever grow. --no-extras and --yes skip the menu and leave it alone.
+      printf '%s' "$extras" | tr ',' '\n' | sed '/^$/d' >"$STATE_DIR/extras"
+    fi
+    log "done in $(((SECONDS - t0) / 60))m$(printf '%02d' $(((SECONDS - t0) % 60)))s (stack: base${stack:+ + $(echo "$stack" | tr ',' ' ')})"
+    print_followups
+  else
+    die "apply failed — fix the error above and re-run; the pipeline is idempotent"
+  fi
+}
+
+# Follow-ups: things a human must finish, collected by steps during the
+# run (e.g. App Store sign-in). Printed last so they are impossible to miss.
+print_followups() {
+  if [ -s "$STATE_DIR/mas-pending.txt" ]; then
+    log "FOLLOW-UP: App Store apps pending (sign in via App Store > Store menu, then re-run 'devseed apply'):"
+    while IFS= read -r app; do
+      log "  - $app"
+    done <"$STATE_DIR/mas-pending.txt"
+  fi
+}
+
+cmd_diff() {
+  local stack tags only except yes unattended reset noextras
+  parse_stack_args "$@"
+  bootstrap
+  resolve_stack "$stack" "$tags" "$(read_extras)"
+  log "diff (check mode) — stack: base${stack:+ + $(echo "$stack" | tr ',' ' ')}"
+  run_ansible "[]" 1 --check --diff || true
+  "$VENV/bin/python" - "$RESOLVED" <<'PYEOF'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+unverified = [s["id"] for s in d.get("devseed_steps") or []
+              if s.get("kind") in ("manual", "tasks")]
+if unverified:
+    print(f"devseed: UNVERIFIED ({len(unverified)}): " + ", ".join(unverified)
+          + "  — manual/config-tasks steps cannot be evaluated in check mode")
+PYEOF
+}
+
+cmd_resolve() {
+  local stack tags only except yes unattended reset noextras
+  parse_stack_args "$@"
+  bootstrap
+  resolve_stack "$stack" "$tags" "$(read_extras)"
+  log "resolved -> $RESOLVED (stack: base${stack:+ + $(echo "$stack" | tr ',' ' ')})"
+}
+
+cmd_doctor() {
+  log "engine:  $ENGINE_DIR"
+  log "config:  $(config_dir)$([ -d "$DEVSEED_ROOT/config" ] || echo '  (reference fallback — run devseed apply to onboard)')"
+  log "stack:   base $(read_stack | tr '\n' ' ')"
+  log "extras:  $(read_extras)"
+  log "uv:      $([ -x "$(uv_bin)" ] && "$(uv_bin)" --version || echo missing)"
+  log "venv:    $([ -f "$VENV/.devseed-toolchain" ] && cat "$VENV/.devseed-toolchain" || echo 'not bootstrapped')"
+  log "collections: $([ -f "$STATE_DIR/collections/.devseed-requirements" ] && echo ok || echo 'not installed')"
+}
+
+case "${1:-help}" in
+  apply)
+    shift
+    cmd_apply "$@"
+    ;;
+  diff)
+    shift
+    cmd_diff "$@"
+    ;;
+  resolve)
+    shift
+    cmd_resolve "$@"
+    ;;
+  doctor) cmd_doctor ;;
+  version) echo "devseed 2.0.0-dev" ;;
+  help | -h | --help) usage ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac

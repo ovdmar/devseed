@@ -1,0 +1,63 @@
+---
+- name: Check installed uv tools
+  ansible.builtin.command:
+    cmd: "{{ devseed_uv_bin | default('uv') }} tool list"
+  register: devseed_uv_list
+  changed_when: false
+  failed_when: false
+
+- name: Install uv tools
+  ansible.builtin.command:
+    cmd: "{{ devseed_uv_bin | default('uv') }} tool install {{ item }}"
+  loop: "{{ devseed_uv_tools | default([]) }}"
+  when: >-
+    (item.split('==') | first) not in
+    (devseed_uv_list.stdout_lines | default([]) | map('split', ' ') | map('first') | list)
+    or ('==' in item and item.replace('==', ' v') not in devseed_uv_list.stdout)
+  changed_when: true
+  register: devseed_uv_result
+  ignore_errors: true
+
+- name: Report failed uv tools
+  ansible.builtin.debug:
+    msg: "UV TOOL FAILED: {{ item.item }} — check the name/pin in your config, then re-run"
+  loop: "{{ devseed_uv_result.results | default([]) | rejectattr('skipped', 'defined') | selectattr('failed') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Check npm availability
+  ansible.builtin.command:
+    cmd: which npm
+  register: devseed_npm_check
+  changed_when: false
+  failed_when: false
+  environment:
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+
+- name: Install npm globals
+  community.general.npm:
+    # Same rule as pin_name() in lib/resolve.py: a trailing @version is a
+    # pin, a LEADING @ is a scope. Splitting on the first @ mangles
+    # "@scope/pkg@1.2.3" into the name "@scope/pkg@1.2.3".
+    name: "{{ item[: item.rindex('@')] if '@' in item[1:] else item }}"
+    version: "{{ item[item.rindex('@') + 1 :] if '@' in item[1:] else omit }}"
+    global: true
+    executable: "{{ devseed_npm_check.stdout }}"
+  loop: "{{ devseed_npm_globals | default([]) }}"
+  when: devseed_npm_check.rc == 0
+  environment:
+    PATH: "/opt/homebrew/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+  register: devseed_npm_result
+  ignore_errors: true
+
+- name: Report failed npm globals
+  ansible.builtin.debug:
+    msg: "NPM GLOBAL FAILED: {{ item.item }} — check the package name in your config, then re-run"
+  loop: "{{ devseed_npm_result.results | default([]) | rejectattr('skipped', 'defined') | selectattr('failed') | list }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Report skipped npm globals
+  ansible.builtin.debug:
+    msg: "npm not installed — skipped {{ devseed_npm_globals | join(', ') }} (add node to brew.formulae)"
+  when: devseed_npm_check.rc != 0 and (devseed_npm_globals | default([]) | length > 0)

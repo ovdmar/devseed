@@ -1,0 +1,98 @@
+---
+# The devseed default pipeline, as data. This file is layer 0 of the
+# resolver: ~/.devseed/config/config.yaml and stacked profiles overlay it
+# by id — reorder (order:), disable (absent: true), replace fields, or
+# insert new steps. Never fork the engine to customize the pipeline.
+#
+# Order bands (convention):
+#   < 20   anything needing a human (prereq gates, auth chains)
+#   20-89  unattended installs and configuration
+#   >= 90  trailing manual/report steps that depend on installs
+
+prereqs:
+  - id: network
+    kind: builtin
+    required: true
+    why: everything downloads over the network
+    fix: Connect to a network and re-run.
+
+  - id: clt
+    kind: builtin
+    required: true
+    why: git, compilers and Homebrew need the Xcode Command Line Tools
+    fix: Run `xcode-select --install`, finish the dialog, then re-run.
+
+  - id: icloud
+    kind: builtin
+    required: false
+    why: iCloud sync (Notes, Keychain, Drive) is part of a finished Mac
+    fix: "System Settings > Apple ID > Sign in, then enable the services you use."
+
+  - id: appstore
+    kind: builtin
+    required: false
+    why: mas can only install App Store apps for a signed-in account
+    fix: "App Store > Store menu > Sign in."
+
+  - id: github
+    kind: builtin
+    required: false          # set required: true in your config if git_repos need it
+    why: cloning your repos over SSH needs an authorized key
+    fix: "Add ~/.ssh/id_ed25519.pub at https://github.com/settings/keys, then re-run."
+    # auto-fix chain: generate ed25519 key if ~/.ssh has none -> gh auth
+    # login (the one human moment) -> gh ssh-key add. On a virgin Mac gh
+    # is not installed yet at preflight time, so the first pass generates
+    # the key and warns; the pass after brew has installed gh completes
+    # the login and registers the key.
+    auto_fix: true
+
+steps:
+  - id: git_identity
+    kind: builtin
+    order: 10
+    title: Git identity
+
+  - id: brew
+    kind: builtin
+    order: 20
+    title: Homebrew packages
+
+  - id: curl_tools
+    kind: builtin
+    order: 30
+    title: Pinned curl tools
+
+  - id: uv_npm
+    kind: builtin
+    order: 40
+    title: uv + npm tools
+
+  - id: cursor_extensions
+    kind: builtin
+    order: 44
+    title: Cursor extensions
+
+  - id: dotfiles
+    kind: builtin
+    order: 50
+    title: Dotfiles
+
+  - id: defaults
+    kind: builtin
+    order: 60
+    title: macOS defaults
+
+  - id: git_repos
+    kind: builtin
+    order: 70
+    title: Git repositories
+
+  - id: login_items
+    kind: builtin
+    order: 80
+    title: Login items
+
+  - id: manual_apps
+    kind: builtin
+    order: 90
+    title: Manual apps (report)

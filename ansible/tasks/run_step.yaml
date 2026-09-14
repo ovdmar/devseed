@@ -1,0 +1,89 @@
+---
+# Execute one pipeline step: banner, dispatch on kind, remediation on
+# failure. `step` and `devseed_step_idx` come from the playbook loop;
+# `devseed_skip_ids` (optional) holds per-run deselections.
+
+- name: "Skip banner"
+  ansible.builtin.debug:
+    msg: "[Step {{ devseed_step_idx + 1 }}/{{ devseed_steps | length }}] skip  {{ step.title | default(step.id) }}"
+  when: step.id in (devseed_skip_ids | default([]))
+
+- name: "Run step {{ step.id }}"
+  when: step.id not in (devseed_skip_ids | default([]))
+  block:
+    - name: "Step banner"
+      ansible.builtin.debug:
+        msg: >-
+          [Step {{ devseed_step_idx + 1 }}/{{ devseed_steps | length }}]
+          ({{ '%dm%02ds' | format(((now(utc=true).timestamp() | float) - (devseed_t0 | float)) // 60,
+                                  ((now(utc=true).timestamp() | float) - (devseed_t0 | float)) % 60) }})
+          {{ step.title | default(step.id) }}
+
+    - name: "Builtin: {{ step.id }}"
+      ansible.builtin.include_tasks: "steps/{{ step.id }}.yaml"
+      when: step.kind == 'builtin'
+
+# run/script steps come in two variants: creates-guarded ones let the
+# command module decide changed (skip-by-creates must NOT report changed),
+# the rest carry an explicit changed_when (the resolver enforces one or
+# the other exists).
+    - name: "Run (creates-guarded): {{ step.id }}"
+      ansible.builtin.command:
+        cmd: "{{ step.cmd }}"
+        creates: "{{ step.creates | expanduser }}"
+      when: step.kind == 'run' and step.creates is defined
+
+    - name: "Run: {{ step.id }}"
+      ansible.builtin.command:
+        cmd: "{{ step.cmd }}"
+      changed_when: "{{ step.changed_when }}"
+      when: step.kind == 'run' and step.creates is not defined
+
+    - name: "Script (creates-guarded): {{ step.id }}"
+      ansible.builtin.command:
+        cmd: "/bin/bash {{ devseed_config_dir }}/{{ step.file }}"
+        creates: "{{ step.creates | expanduser }}"
+      environment:
+        DEVSEED_CONFIG_DIR: "{{ devseed_config_dir }}"
+        DEVSEED_WORKSPACE: "{{ devseed_workspace_path | default('~/workspace') }}"
+        DEVSEED_STACK: "{{ devseed_stack | join(',') }}"
+      when: step.kind == 'script' and step.creates is defined
+
+    - name: "Script: {{ step.id }}"
+      ansible.builtin.command:
+        cmd: "/bin/bash {{ devseed_config_dir }}/{{ step.file }}"
+      changed_when: "{{ step.changed_when }}"
+      environment:
+        DEVSEED_CONFIG_DIR: "{{ devseed_config_dir }}"
+        DEVSEED_WORKSPACE: "{{ devseed_workspace_path | default('~/workspace') }}"
+        DEVSEED_STACK: "{{ devseed_stack | join(',') }}"
+      when: step.kind == 'script' and step.creates is not defined
+
+    - name: "Tasks: {{ step.id }}"
+      ansible.builtin.include_tasks: "{{ devseed_config_dir }}/{{ step.file }}"
+      when: step.kind == 'tasks'
+
+    - name: "Manual: {{ step.id }}"
+      ansible.builtin.pause:
+        prompt: |-
+          MANUAL STEP — {{ step.title | default(step.id) }}
+          {{ step.instructions | default('') }}
+          Press ENTER when done (Ctrl-C to abort; re-run later with --only {{ step.id }})
+      when: step.kind == 'manual' and not (devseed_unattended | default(false) | bool)
+
+    - name: "Manual step deferred (unattended)"
+      ansible.builtin.debug:
+        msg: "MANUAL STEP SKIPPED (unattended): {{ step.title | default(step.id) }} — {{ step.instructions | default('') }}"
+      when: step.kind == 'manual' and (devseed_unattended | default(false) | bool)
+
+    - name: "Unknown step kind"
+      ansible.builtin.fail:
+        msg: "step '{{ step.id }}': unknown kind '{{ step.kind }}'"
+      when: step.kind not in ['builtin', 'run', 'script', 'tasks', 'manual']
+
+  rescue:
+    - name: "Step failed — remediation"
+      ansible.builtin.fail:
+        msg: >-
+          Step '{{ step.id }}' failed.
+          {{ step.fix | default('Fix the error above and re-run `devseed apply` — the pipeline is idempotent.') }}

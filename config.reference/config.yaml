@@ -1,0 +1,315 @@
+# devseed config for this machine.
+# Layered by profiles/<name>.yaml; see config.example in the engine.
+brew:
+  casks:
+  - adobe-acrobat-reader
+  - anydesk
+  - breaktimer
+  - bruno
+  - chatgpt
+  - claude
+  - claude-code
+  - clickup
+  - codex
+  - codexbar
+  - conductor
+  - cursor
+  - discord
+  - docker
+  - docker-desktop
+  - flycut
+  - google-chrome
+  - intellij-idea-ce
+  - iterm2
+  - notion
+  - openvpn-connect
+  - postman
+  - pycharm
+  - slack
+  - stats
+  - sublime-text
+  - superset
+  - visual-studio-code
+  - vlc
+  - zoom
+  formulae:
+  - actionlint
+  - age
+  - anomalyco/tap/opencode
+  - bats-core
+  - bitwarden-cli
+  - black
+  - cloudflared
+  - crane
+  - docker
+  - docutils
+  - fzf
+  - gcalcli
+  - getsentry/tools/sentry-cli
+  - gh
+  - git-lfs
+  - googleworkspace-cli
+  - graphviz
+  - hcloud
+  - helm
+  - html2text
+  - jpeg
+  - k9s
+  - kubectx
+  - kubernetes-cli
+  - kustomize
+  - lastpass-cli
+  - libfido2
+  - libyaml
+  - lima
+  - mas
+  - nmap
+  - node
+  - p7zip
+  - perl
+  - podman
+  - powerlevel10k
+  - pyenv
+  - python@3.13
+  - qrencode
+  - redis
+  - ruff
+  - selenium-server
+  - shfmt
+  - snyk/tap/snyk
+  - sops
+  - tmux
+  - vim
+  - wakeonlan
+  - wireguard-tools
+  - yarn
+  - zsh
+  - zsh-autosuggestions
+  - zsh-completions
+  - zsh-syntax-highlighting
+  mas:
+  - id: 1444383602
+    name: Goodnotes
+  - id: 1474276998
+    name: HP
+  - id: 926036361
+    name: LastPass
+  - id: 1480068668
+    name: Messenger
+  - id: 462058435
+    name: Microsoft Excel
+  - id: 784801555
+    name: Microsoft OneNote
+  - id: 985367838
+    name: Microsoft Outlook
+  - id: 462062816
+    name: Microsoft PowerPoint
+  - id: 462054704
+    name: Microsoft Word
+  - id: 402592703
+    name: Time Out
+  - id: 310633997
+    name: WhatsApp
+  - id: 1451685025
+    name: WireGuard
+  taps:
+  - atlassian/acli
+  - cirruslabs/cli
+  - fluxcd/tap
+  - getsentry/tools
+  - hashicorp/tap
+  - open-cli-collective/tap
+  - rockymadden/rockymadden
+  - snyk/tap
+  - steipete/tap
+  - anomalyco/tap
+cursor_extensions:
+- anysphere.cursorpyright
+- anysphere.remote-ssh
+- golang.go
+- k--kato.intellij-idea-keybindings
+- ms-azuretools.vscode-containers
+- ms-azuretools.vscode-docker
+- ms-python.debugpy
+- ms-python.python
+- solomonkinard.git-blame
+- waderyan.gitblame
+- zxh404.vscode-proto3
+defaults_restart:
+  com.apple.Siri: SystemUIServer
+  com.apple.dock: Dock
+  com.apple.finder: Finder
+  com.apple.menuextra.clock: SystemUIServer
+  com.apple.screencapture: SystemUIServer
+dotfiles:
+  files:
+  - .config/git/ignore
+  - .config/karabiner/karabiner.json
+  - .config/shell/aliases.zsh
+  - .config/shell/env.zsh
+  - .fzf.zsh
+  - .p10k.zsh
+  - .zshrc
+  - .gitconfig
+  - .zprofile
+  - Library/Keyboard Layouts/Romanian - Programmers (Custom).bundle/Contents/Info.plist
+  - Library/Keyboard Layouts/Romanian - Programmers (Custom).bundle/Contents/Resources/Romanian - Programmers (Custom).icns
+  - Library/Keyboard Layouts/Romanian - Programmers (Custom).bundle/Contents/Resources/Romanian - Programmers (Custom).keylayout
+  - Library/Keyboard Layouts/Romanian - Programmers (Custom).bundle/Contents/Resources/en.lproj/InfoPlist.strings
+  - Library/Keyboard Layouts/Romanian - Programmers (Custom).bundle/Contents/version.plist
+  - Library/Keyboard Layouts/Romanian - Programmers - Custom.keylayout
+  - Library/Keyboard Layouts/Romanian - Programmers.icns
+git_repos:
+- dest: ~/workspace/dev-setup
+  url: git@github.com:ovdmar/dev-setup.git
+- dest: ~/workspace/meshes/platform
+  url: git@github.com:ovdmar/platform.git
+identity:
+  git_email: ovidiu.marus@gmail.com
+  git_name: Ovidiu Măruș
+login_items:
+- BreakTimer
+- ClickUp
+- CodexBar
+- DisplayLink Manager
+- Flycut
+- Microsoft Outlook
+- Notion
+- Rectangle
+- Stats
+macos_defaults:
+- domain: NSGlobalDomain
+  key: AppleInterfaceStyle
+  type: string
+  value: Dark
+- domain: NSGlobalDomain
+  key: AppleKeyboardUIMode
+  type: int
+  value: 2
+- domain: NSGlobalDomain
+  key: NSAutomaticCapitalizationEnabled
+  type: bool
+  value: false
+- domain: NSGlobalDomain
+  key: NSAutomaticPeriodSubstitutionEnabled
+  type: bool
+  value: false
+- domain: NSGlobalDomain
+  key: NSAutomaticSpellingCorrectionEnabled
+  type: bool
+  value: false
+- domain: NSGlobalDomain
+  key: com.apple.swipescrolldirection
+  type: bool
+  value: true
+- domain: com.apple.Accessibility
+  key: KeyRepeatEnabled
+  type: int
+  value: 1
+- domain: com.apple.AppleMultitouchMouse
+  key: MouseButtonMode
+  type: string
+  value: OneButton
+- domain: com.apple.AppleMultitouchTrackpad
+  key: Clicking
+  type: int
+  value: 0
+- domain: com.apple.AppleMultitouchTrackpad
+  key: TrackpadThreeFingerDrag
+  type: bool
+  value: false
+- domain: com.apple.HIToolbox
+  key: AppleFnUsageType
+  type: int
+  value: 1
+- domain: com.apple.Siri
+  key: StatusMenuVisible
+  type: bool
+  value: false
+- domain: com.apple.WindowManager
+  key: AutoHide
+  type: bool
+  value: false
+- domain: com.apple.WindowManager
+  key: GloballyEnabled
+  type: bool
+  value: false
+- domain: com.apple.dock
+  key: autohide
+  type: bool
+  value: false
+- domain: com.apple.dock
+  key: magnification
+  type: bool
+  value: true
+- domain: com.apple.dock
+  key: tilesize
+  type: int
+  value: 54
+- domain: com.apple.driver.AppleBluetoothMultitouch.mouse
+  key: MouseButtonMode
+  type: string
+  value: OneButton
+- domain: com.apple.driver.AppleBluetoothMultitouch.trackpad
+  key: Clicking
+  type: int
+  value: 0
+- domain: com.apple.driver.AppleBluetoothMultitouch.trackpad
+  key: TrackpadThreeFingerDrag
+  type: bool
+  value: false
+- domain: com.apple.finder
+  key: FXDefaultSearchScope
+  type: string
+  value: SCcf
+- domain: com.apple.finder
+  key: FXPreferredViewStyle
+  type: string
+  value: Nlsv
+- domain: com.apple.finder
+  key: ShowExternalHardDrivesOnDesktop
+  type: bool
+  value: true
+- domain: com.apple.finder
+  key: ShowHardDrivesOnDesktop
+  type: bool
+  value: false
+- domain: com.apple.finder
+  key: ShowRemovableMediaOnDesktop
+  type: bool
+  value: true
+- domain: com.apple.finder
+  key: _FXSortFoldersFirst
+  type: bool
+  value: true
+- domain: com.apple.loginwindow
+  key: TALLogoutSavesState
+  type: bool
+  value: false
+- domain: com.apple.menuextra.clock
+  key: ShowDayOfWeek
+  type: bool
+  value: true
+- domain: com.apple.universalaccess
+  key: reduceTransparency
+  type: bool
+  value: false
+npm_globals:
+- mcp-remote
+- pi-coding-agent
+- pi-mcp-adapter
+steps:
+- creates: ~/.oh-my-zsh/custom/themes/powerlevel10k
+  file: scripts/oh-my-zsh.sh
+  id: oh-my-zsh
+  kind: script
+  order: 45
+  title: oh-my-zsh and the powerlevel10k theme
+- changed_when: '''CHANGED'' in stdout'
+  file: scripts/input-sources.sh
+  id: input-sources
+  kind: script
+  order: 62
+  title: Keyboard input sources
+uv_tools:
+- browser-use

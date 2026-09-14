@@ -1,0 +1,30 @@
+---
+# devseed pipeline runner: one play that walks the resolved step list.
+# All variables arrive via a single `-e @state/resolved.yaml` (the
+# resolver's output) — never add a second extra-vars source.
+- name: Run the devseed pipeline
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  pre_tasks:
+    - name: Assert resolved config is present
+      ansible.builtin.assert:
+        that:
+          - devseed_steps is defined
+        fail_msg: >-
+          No resolved config. Run through the `devseed` command, which
+          resolves the profile stack before invoking ansible.
+
+    - name: Record pipeline start
+      ansible.builtin.set_fact:
+        devseed_t0: "{{ now(utc=true).timestamp() }}"
+
+  tasks:
+    - name: Run pipeline
+      ansible.builtin.include_tasks: tasks/run_step.yaml
+      loop: "{{ devseed_steps }}"
+      loop_control:
+        loop_var: step
+        index_var: devseed_step_idx
+        label: "{{ step.title | default(step.id) }}"
