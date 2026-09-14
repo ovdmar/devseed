@@ -1,5 +1,6 @@
 # devseed config for this machine.
 # Layered by profiles/<name>.yaml.
+version: 1.0.0
 brew:
   casks:
   - adobe-acrobat-reader

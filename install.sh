@@ -36,7 +36,7 @@ fi
 
 mkdir -p "$BIN_DIR"
 ln -sf "$ENGINE/devseed" "$BIN_DIR/devseed"
-log "linked $BIN_DIR/devseed"
+log "linked $BIN_DIR/devseed (devseed $(cat "$ENGINE/VERSION" 2>/dev/null || echo unknown))"
 
 # Telling someone to edit their PATH and then leaving them with a
 # command not found is not an install. Add the line ourselves, guarded so

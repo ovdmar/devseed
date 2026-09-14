@@ -112,12 +112,53 @@ onboard_config() {
 
 log() { printf 'devseed: %s\n' "$*"; }
 
+engine_version() { cat "$ENGINE_DIR/VERSION" 2>/dev/null || echo "0.0.0"; }
+
+config_version() {
+  sed -n 's/^version:[[:space:]]*"\{0,1\}\([0-9][0-9.]*\)"\{0,1\}[[:space:]]*$/\1/p' \
+    "$(config_dir)/config.yaml" 2>/dev/null | head -1
+}
+
+# True when $1 is strictly newer than $2. Component-wise numeric sort, so
+# 2.0.10 beats 2.0.9 where a string compare would not.
+version_gt() {
+  [ "$1" = "$2" ] && return 1
+  [ "$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)" = "$1" ]
+}
+
+# The published engine version, cached for a day. Never fatal and never
+# slow: a short timeout, and any failure just means no update line.
+remote_version() {
+  local cache="$STATE_DIR/version-check" now age
+  now="$(date +%s)"
+  if [ -f "$cache" ]; then
+    age=$((now - $(sed -n 1p "$cache" 2>/dev/null || echo 0)))
+    if [ "$age" -lt 86400 ] && [ "$age" -ge 0 ]; then
+      sed -n 2p "$cache"
+      return 0
+    fi
+  fi
+  local remote
+  remote="$(curl -fsSL --connect-timeout 3 --max-time 5 \
+    "https://raw.githubusercontent.com/ovdmar/devseed/main/VERSION" 2>/dev/null | tr -d '[:space:]')" || remote=""
+  case "$remote" in
+    [0-9]*)
+      mkdir -p "$STATE_DIR"
+      printf '%s\n%s\n' "$now" "$remote" >"$cache"
+      echo "$remote"
+      ;;
+    *) : ;;
+  esac
+}
+
 # Printed at the top of every apply. Short on purpose: it is read once
 # with attention and then skimmed for years.
 intro() {
+  local cv
+  cv="$(config_version)"
+  printf '\ndevseed %s — your Mac, described by one config.\n' "$(engine_version)"
+  [ -n "$cv" ] && printf '  config %s from %s\n' "$cv" "$(config_dir)"
   cat <<'EOF'
-
-devseed — your Mac, described by one config.
 
   apply makes this machine match the config. It is not a one-time
   installer: run it again after editing the config and only the
@@ -127,6 +168,12 @@ devseed — your Mac, described by one config.
   anything needing you is asked for up front.
 
 EOF
+  local latest
+  latest="$(remote_version)"
+  if [ -n "$latest" ] && version_gt "$latest" "$(engine_version)"; then
+    printf '  A newer devseed is available: %s (you have %s)\n' "$latest" "$(engine_version)"
+    printf '  Update with: git -C %s pull\n\n' "$ENGINE_DIR"
+  fi
 }
 die() {
   printf 'devseed: %s\n' "$*" >&2
@@ -549,7 +596,11 @@ case "${1:-help}" in
     cmd_resolve "$@"
     ;;
   doctor) cmd_doctor ;;
-  version) echo "devseed 2.0.0-dev" ;;
+  version)
+    echo "devseed $(engine_version)"
+    cv="$(config_version)"
+    [ -n "$cv" ] && echo "config  $cv ($(config_dir))"
+    ;;
   help | -h | --help) usage ;;
   *)
     usage
