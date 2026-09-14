@@ -33,11 +33,30 @@
         creates: "{{ step.creates | expanduser }}"
       when: step.kind == 'run' and step.creates is defined
 
+    # The config's changed_when cannot be evaluated on the command task
+    # itself: it arrives through an outer {{ }}, and by the time Ansible
+    # evaluates the rendered conditional the module result is not in scope
+    # — "'stdout' is undefined". Run the command with changed_when: false,
+    # then carry the status on a no-op task that injects stdout and rc as
+    # ordinary vars, which the expression can see.
     - name: "Run: {{ step.id }}"
       ansible.builtin.command:
         cmd: "{{ step.cmd }}"
-      changed_when: "{{ step.changed_when }}"
+      changed_when: false
+      register: devseed_run_result
       when: step.kind == 'run' and step.creates is not defined
+
+    - name: "Changed: {{ step.id }}"
+      ansible.builtin.debug:
+        msg: "{{ step.id }} reported a change"
+      vars:
+        stdout: "{{ devseed_run_result.stdout | default('') }}"
+        stderr: "{{ devseed_run_result.stderr | default('') }}"
+        rc: "{{ devseed_run_result.rc | default(0) }}"
+      changed_when: "{{ step.changed_when }}"
+      when:
+        - step.kind == 'run' and step.creates is not defined
+        - devseed_run_result.skipped is not defined
 
     - name: "Script (creates-guarded): {{ step.id }}"
       ansible.builtin.command:
@@ -52,12 +71,25 @@
     - name: "Script: {{ step.id }}"
       ansible.builtin.command:
         cmd: "/bin/bash {{ devseed_config_dir }}/{{ step.file }}"
-      changed_when: "{{ step.changed_when }}"
+      changed_when: false
+      register: devseed_script_result
       environment:
         DEVSEED_CONFIG_DIR: "{{ devseed_config_dir }}"
         DEVSEED_WORKSPACE: "{{ devseed_workspace_path | default('~/workspace') }}"
         DEVSEED_STACK: "{{ devseed_stack | join(',') }}"
       when: step.kind == 'script' and step.creates is not defined
+
+    - name: "Changed (script): {{ step.id }}"
+      ansible.builtin.debug:
+        msg: "{{ step.id }} reported a change"
+      vars:
+        stdout: "{{ devseed_script_result.stdout | default('') }}"
+        stderr: "{{ devseed_script_result.stderr | default('') }}"
+        rc: "{{ devseed_script_result.rc | default(0) }}"
+      changed_when: "{{ step.changed_when }}"
+      when:
+        - step.kind == 'script' and step.creates is not defined
+        - devseed_script_result.skipped is not defined
 
     - name: "Tasks: {{ step.id }}"
       ansible.builtin.include_tasks: "{{ devseed_config_dir }}/{{ step.file }}"

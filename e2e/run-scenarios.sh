@@ -194,6 +194,7 @@ if [ "$CONFIG_DIR" = "$HERE/fixtures/config" ]; then
   check "macOS default applied" 'test "$(defaults read com.apple.dock autohide)" = 1'
   check "git repo cloned" 'test -d ~/e2e-workspace/hello/.git'
   check "script step ran" 'test -f ~/.devseed-e2e-marker'
+  check "changed_when script step ran" 'test -f ~/.devseed-e2e-changed-when'
 fi
 
 step "all scenarios passed"

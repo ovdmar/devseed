@@ -72,6 +72,15 @@ steps:
     file: scripts/marker.sh
     creates: ~/.devseed-e2e-marker
 
+  # changed_when instead of creates: reports changed on the virgin run and
+  # unchanged afterwards, so the idempotency scenarios prove the mechanism.
+  - id: changed-when-probe
+    kind: script
+    order: 47
+    title: changed_when probe
+    file: scripts/changed-when.sh
+    changed_when: "'CHANGED' in stdout"
+
   - id: import-settings
     kind: manual
     order: 95

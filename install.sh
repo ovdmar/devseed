@@ -38,9 +38,22 @@ mkdir -p "$BIN_DIR"
 ln -sf "$ENGINE/devseed" "$BIN_DIR/devseed"
 log "linked $BIN_DIR/devseed"
 
+# Telling someone to edit their PATH and then leaving them with a
+# command not found is not an install. Add the line ourselves, guarded so
+# re-running the installer does not stack duplicates.
+# shellcheck disable=SC2016 # $HOME must stay literal — it is written to a file
+PATH_LINE='export PATH="$HOME/.local/bin:$PATH"'
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
-  *) log "note: add $BIN_DIR to PATH (e.g. echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.zprofile)" ;;
+  *)
+    if [ -f "$HOME/.zprofile" ] && grep -qF "$PATH_LINE" "$HOME/.zprofile"; then
+      log "$BIN_DIR is on PATH in ~/.zprofile already — open a new shell"
+    else
+      printf '\n%s\n' "$PATH_LINE" >>"$HOME/.zprofile"
+      log "added $BIN_DIR to PATH in ~/.zprofile"
+    fi
+    log "this shell has not picked it up yet — run: exec zsh -l"
+    ;;
 esac
 
 log "next: clone your config to $DEVSEED_ROOT/config, then run: devseed apply"
