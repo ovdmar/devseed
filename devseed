@@ -313,31 +313,33 @@ check_ids() { # $1 csv of step ids
 # Customize prompt: per-run opt-out over the resolved steps. Deselections
 # map to the skip list; nothing is persisted.
 customize_skips() { # echoes csv of ids to skip ("" when none)
-  local ids n i answer picks
+  local answer
   [ -t 0 ] || return 0
   printf 'devseed: customize what gets applied? [y/N] ' >&2
   read -r answer
   case "$answer" in y | Y | yes) ;; *) return 0 ;; esac
-  ids="$(res_get 'devseed_steps[*].id' | "$VENV/bin/python" -c 'import json,sys; print("\n".join(json.load(sys.stdin)))')"
-  n=0
-  for i in $ids; do
-    n=$((n + 1))
-    printf 'devseed:   %2d) %s\n' "$n" "$i" >&2
-  done
-  printf 'devseed: numbers to SKIP this run (e.g. 2,5 — Enter for none): ' >&2
-  read -r picks
-  [ -n "$picks" ] || return 0
-  echo "$ids" | "$VENV/bin/python" -c '
-import sys
-ids = sys.stdin.read().split()
-picks = {int(x) for x in sys.argv[1].replace(",", " ").split()}
-print(",".join(ids[p - 1] for p in sorted(picks) if 1 <= p <= len(ids)))
-' "$picks"
+  # Everything starts checked: the question is what to leave out, so the
+  # default answer (enter, changing nothing) runs the whole pipeline.
+  "$VENV/bin/python" - "$RESOLVED" "$ENGINE_DIR/lib" <<'PYEOF'
+import sys, yaml
+sys.path.insert(0, sys.argv[2])
+import picker
+steps = yaml.safe_load(open(sys.argv[1])).get("devseed_steps") or []
+ids = [s["id"] for s in steps]
+if not ids:
+    raise SystemExit(0)
+labels = [f'{s["id"]}  —  {s.get("title", "")}'.rstrip(" —") for s in steps]
+try:
+    chosen = set(picker.select(labels, range(len(ids)), "Steps to apply (unchecked are skipped):"))
+except KeyboardInterrupt:
+    raise SystemExit(130)
+print(",".join(i for n, i in enumerate(ids) if n not in chosen))
+PYEOF
 }
 
 # Extras menu: opt-in catalogue, already-selected remembered in state.
 extras_menu() { # echoes csv of chosen extra keys
-  local catalog remembered picks
+  local catalog remembered
   remembered="$(read_extras)"
   catalog="$(res_get 'devseed_extras[*].key' 2>/dev/null)" || {
     echo "$remembered"
@@ -351,75 +353,22 @@ extras_menu() { # echoes csv of chosen extra keys
     echo "$remembered"
     return 0
   fi
-  "$VENV/bin/python" - "$RESOLVED" "$remembered" <<'PYEOF' >&2
+  "$VENV/bin/python" - "$RESOLVED" "$remembered" "$ENGINE_DIR/lib" <<'PYEOF'
 import sys, yaml
-d = yaml.safe_load(open(sys.argv[1]))
+sys.path.insert(0, sys.argv[3])
+import picker
+extras = yaml.safe_load(open(sys.argv[1])).get("devseed_extras") or []
 remembered = set(sys.argv[2].split(",")) if sys.argv[2] else set()
-print("devseed: optional extras (* = remembered):")
-for n, e in enumerate(d.get("devseed_extras") or [], 1):
-    mark = "*" if e.get("key") in remembered else " "
-    print(f"devseed:   {n:2d}){mark} {e.get('label', e.get('key'))}")
-PYEOF
-  printf 'devseed: extras to enable (e.g. 1,3 / Enter keeps remembered / 0 for none): ' >&2
-  read -r picks
-  if [ -z "$picks" ]; then
-    echo "$remembered"
-    return 0
-  fi
-  if [ "$picks" = "0" ]; then
-    echo ""
-    return 0
-  fi
-  "$VENV/bin/python" - "$RESOLVED" "$picks" <<'PYEOF'
-import sys, yaml
-d = yaml.safe_load(open(sys.argv[1]))
-keys = [e.get("key") for e in d.get("devseed_extras") or []]
-picks = {int(x) for x in sys.argv[2].replace(",", " ").split()}
-print(",".join(keys[p - 1] for p in sorted(picks) if 1 <= p <= len(keys)))
+labels = [e.get("label", e.get("key")) for e in extras]
+pre = [n for n, e in enumerate(extras) if e.get("key") in remembered]
+try:
+    chosen = picker.select(labels, pre, "Optional extras:")
+except KeyboardInterrupt:
+    raise SystemExit(130)
+print(",".join(extras[n]["key"] for n in chosen))
 PYEOF
 }
 
-run_preflight() { # $1 unattended
-  local flag=""
-  [ "$1" = 1 ] && flag="--unattended"
-  DEVSEED_PY="$VENV/bin/python" bash "$ENGINE_DIR/lib/preflight.sh" "$RESOLVED" $flag
-}
-
-run_ansible() { # $1 skip_json, $2 unattended, $3... extra ansible args
-  local skip_json="$1" unattended="$2"
-  shift 2
-  local blob
-  blob="{\"devseed_skip_ids\": $skip_json, \"devseed_unattended\": $unattended, \"devseed_uv_bin\": \"$(uv_bin)\"}"
-  local pw=""
-  if sudo -n true 2>/dev/null; then
-    : # passwordless sudo — nothing to ask
-  elif [ -t 0 ] && [ "$unattended" != 1 ]; then
-    printf 'devseed: sudo password (asked once, kept in memory only): '
-    read -rs pw
-    printf '\n'
-    printf '%s\n' "$pw" | sudo -S -v 2>/dev/null || die "sudo password rejected"
-  else
-    log "warning: sudo needs a password and this run is non-interactive; escalating steps may fail"
-  fi
-  local rc=0
-  if [ -n "$pw" ]; then
-    ANSIBLE_CONFIG="$ENGINE_DIR/ansible/ansible.cfg" \
-      ANSIBLE_COLLECTIONS_PATH="$STATE_DIR/collections" \
-      ANSIBLE_LOG_PATH="$STATE_DIR/ansible.log" \
-      "$VENV/bin/ansible-playbook" -i localhost, "$ENGINE_DIR/ansible/playbook.yaml" \
-      -e "@$RESOLVED" -e "$blob" --become-password-file <(printf '%s' "$pw") "$@" || rc=$?
-    pw=""
-  else
-    ANSIBLE_CONFIG="$ENGINE_DIR/ansible/ansible.cfg" \
-      ANSIBLE_COLLECTIONS_PATH="$STATE_DIR/collections" \
-      ANSIBLE_LOG_PATH="$STATE_DIR/ansible.log" \
-      "$VENV/bin/ansible-playbook" -i localhost, "$ENGINE_DIR/ansible/playbook.yaml" \
-      -e "@$RESOLVED" -e "$blob" "$@" || rc=$?
-  fi
-  return "$rc"
-}
-
-# --- commands ------------------------------------------------------------
 parse_stack_args() { # sets: stack tags only except yes unattended reset noextras
   stack="" tags="" only="" except="" yes=0 unattended=0 reset=0 noextras=0
   while [ "$#" -gt 0 ]; do

@@ -50,14 +50,19 @@ def _fallback(labels, preselected, title, out):
     for n, label in enumerate(labels, 1):
         mark = "*" if (n - 1) in preselected else " "
         print(f"  {n:2d}){mark} {label}", file=out)
-    print("Numbers to select [Enter = keep as shown, 0 = none]: ", end="", file=out, flush=True)
+    print("keep? [a]ll / [n]one / numbers (e.g. 1,3-5) [Enter = as shown]: ",
+          end="", file=out, flush=True)
     line = sys.stdin.readline()
     if not line:
         return sorted(preselected)
-    answer = line.strip()
+    answer = line.strip().lower()
+    # The same words the numbered prompts accepted before the picker, so
+    # scripted answers and the bats suite keep working unchanged.
     if answer == "":
         return sorted(preselected)
-    if answer == "0":
+    if answer in ("a", "all"):
+        return list(range(len(labels)))
+    if answer in ("n", "none", "0"):
         return []
     return _parse_numeric(answer, len(labels))
 

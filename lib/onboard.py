@@ -16,6 +16,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import picker
+from pathlib import Path
+
 import yaml
 
 # (config key, sub-key or None, label function for one item)
@@ -63,11 +68,14 @@ def parse_selection(answer, count):
 
 
 def select_category(name, items, label):
-    print(f"\n{name} ({len(items)} items):")
-    for n, item in enumerate(items, 1):
-        print(f"  {n:3d}) {label(item)}")
-    answer = ask("keep? [a]ll / [n]one / numbers (e.g. 1,3-5) [a]: ")
-    picked = parse_selection(answer, len(items))
+    # Everything starts checked: this is building a config FROM a working
+    # machine, so keeping an item is the common answer and dropping one is
+    # the exception.
+    labels = [label(item) for item in items]
+    try:
+        picked = picker.select(labels, range(len(items)), f"{name} ({len(items)} items) — keep which?")
+    except KeyboardInterrupt:
+        raise SystemExit(130)
     print(f"  -> kept {len(picked)}/{len(items)}")
     return [items[i] for i in picked]
 

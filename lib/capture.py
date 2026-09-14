@@ -20,7 +20,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import yaml
+
+import picker
 
 # zsh writes ": <started>:<elapsed>;<command>" with EXTENDED_HISTORY on,
 # and a bare command line without it. bash writes the bare form.
@@ -96,38 +100,20 @@ def short(name):
 
 
 def choose(candidates, assume_yes):
-    """Numbered multi-select over (kind, name) pairs."""
-    print("\nFound in your shell history, installed now, not yet in your config:\n")
-    for n, (kind, name) in enumerate(candidates, 1):
-        print(f"  {n:2d}) {name}  ({kind})")
+    """Checkbox multi-select over (kind, name) pairs."""
     if assume_yes:
-        print("\n--yes: adding all of them.")
+        print(f"\n--yes: adding all {len(candidates)}.")
         return candidates
-    print()
+    # Nothing pre-checked: these are additions to your config, so each one
+    # should be a deliberate yes rather than something you have to notice
+    # and turn off.
+    labels = [f"{name}  ({kind})" for kind, name in candidates]
     try:
-        answer = input("Add which? [Enter = all / 0 = none / e.g. 1,3-5]: ").strip()
-    except EOFError:
+        chosen = picker.select(
+            labels, (), "Found in your history, installed now, not in your config:")
+    except KeyboardInterrupt:
         return []
-    if answer == "":
-        return candidates
-    if answer == "0":
-        return []
-    picked = []
-    for chunk in re.split(r"[\s,]+", answer):
-        if not chunk:
-            continue
-        if "-" in chunk:
-            lo, _, hi = chunk.partition("-")
-            try:
-                picked.extend(range(int(lo), int(hi) + 1))
-            except ValueError:
-                continue
-        else:
-            try:
-                picked.append(int(chunk))
-            except ValueError:
-                continue
-    return [candidates[i - 1] for i in sorted(set(picked)) if 1 <= i <= len(candidates)]
+    return [candidates[i] for i in chosen]
 
 
 def main():
