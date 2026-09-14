@@ -68,6 +68,7 @@ brew:
   - p7zip
   - perl
   - podman
+  - poetry
   - powerlevel10k
   - pyenv
   - python@3.13
