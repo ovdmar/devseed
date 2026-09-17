@@ -192,6 +192,9 @@ if [ "$CONFIG_DIR" = "$HERE/fixtures/config" ]; then
   check "nested dotfile copied (parent created)" 'test -f ~/.config/devseed-e2e/nested.conf'
   # shellcheck disable=SC2016 # expansion happens remotely, on purpose
   check "macOS default applied" 'test "$(defaults read com.apple.dock autohide)" = 1'
+  # The Chrome cask is trimmed from the VM, but the ExtensionSettings policy
+  # is a defaults value on the domain and lands regardless of the app.
+  check "chrome extension policy written" 'defaults read com.google.Chrome ExtensionSettings 2>/dev/null | grep -q lmjdlojahmbbcodnpecnjnmlddbkjhnn'
   check "git repo cloned" 'test -d ~/e2e-workspace/hello/.git'
   check "script step ran" 'test -f ~/.devseed-e2e-marker'
   check "changed_when script step ran" 'test -f ~/.devseed-e2e-changed-when'

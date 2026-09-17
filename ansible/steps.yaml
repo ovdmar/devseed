@@ -72,6 +72,11 @@ steps:
     order: 44
     title: Cursor extensions
 
+  - id: chrome_extensions
+    kind: builtin
+    order: 48
+    title: Chrome extensions
+
   - id: dotfiles
     kind: builtin
     order: 50
