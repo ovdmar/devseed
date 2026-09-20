@@ -193,11 +193,34 @@ if [ "$CONFIG_DIR" = "$HERE/fixtures/config" ]; then
   # shellcheck disable=SC2016 # expansion happens remotely, on purpose
   check "macOS default applied" 'test "$(defaults read com.apple.dock autohide)" = 1'
   # The Chrome cask is trimmed from the VM, but the ExtensionSettings policy
-  # is a defaults value on the domain and lands regardless of the app.
-  check "chrome extension policy written" 'defaults read com.google.Chrome ExtensionSettings 2>/dev/null | grep -q lmjdlojahmbbcodnpecnjnmlddbkjhnn'
+  # is a defaults value on the domain and lands regardless of the app. Pin
+  # the installation_mode too: a policy present but set to force_installed or
+  # blocked would defeat the "auto-install, still removable" contract while
+  # an ID-only grep stayed green.
+  # shellcheck disable=SC2016 # expansion happens remotely, on purpose
+  check "chrome extension policy written (normal_installed)" 'p="$(defaults read com.google.Chrome ExtensionSettings 2>/dev/null)"; printf "%s" "$p" | grep -q lmjdlojahmbbcodnpecnjnmlddbkjhnn && printf "%s" "$p" | grep -q "installation_mode.*normal_installed"'
   check "git repo cloned" 'test -d ~/e2e-workspace/hello/.git'
   check "script step ran" 'test -f ~/.devseed-e2e-marker'
   check "changed_when script step ran" 'test -f ~/.devseed-e2e-changed-when'
+
+  # Removing the last extension must clear the ExtensionSettings policy —
+  # it force-installs, so a left-behind entry would keep auto-installing.
+  # Runs after the presence checks above, so it consumes the policy they
+  # just verified. Stack a profile that empties the list, assert the key is
+  # gone, then that the empty-list apply still settles at changed=0.
+  step "scenario: chrome extensions removal converges"
+  # shellcheck disable=SC2016 # expansion happens remotely, on purpose
+  "$VM" ssh "$NAME" 'printf "chrome_extensions_remove:\n  - lmjdlojahmbbcodnpecnjnmlddbkjhnn\n" > ~/.devseed/config/profiles/e2e-chrome-clear.yaml'
+  recap="$(vm_apply $TRIM_STACK e2e-delta e2e-chrome-clear)" || fail "chrome-clear apply exited nonzero"
+  echo "   $recap"
+  assert_recap "$recap" "chrome-clear apply"
+  if "$VM" ssh "$NAME" 'defaults read com.google.Chrome ExtensionSettings >/dev/null 2>&1'; then
+    fail "chrome policy not cleared after removing the last extension"
+  fi
+  echo "   ok  chrome extension policy cleared"
+  recap="$(vm_apply $TRIM_STACK e2e-delta e2e-chrome-clear)" || fail "chrome-clear re-apply exited nonzero"
+  echo "   $recap"
+  case "$recap" in *"changed=0 "*) ;; *) fail "chrome-clear re-apply not idempotent: $recap" ;; esac
 fi
 
 step "all scenarios passed"
