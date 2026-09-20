@@ -13,10 +13,10 @@
 # actually moved (the no-op line must never contain that word, or
 # changed_when fires on every run), so a second apply settles at changed=0.
 #
-# Emptying chrome_extensions clears the policy — this is a force-install
-# policy, so a removed extension that was left behind would keep being
-# auto-installed on every launch. devseed owns the com.google.Chrome
-# ExtensionSettings user-domain key.
+# Emptying chrome_extensions clears the policy — normal_installed auto-
+# installs every entry, so an extension left in the policy after it was
+# dropped from config would keep being auto-installed. devseed owns the
+# com.google.Chrome ExtensionSettings user-domain key.
 
 - name: Build the desired Chrome ExtensionSettings policy
   ansible.builtin.set_fact:

@@ -40,7 +40,7 @@ EOF
   [[ "$(resolve_get "$ROOT/config.reference" devseed_chrome_extensions)" == *"lmjdlojahmbbcodnpecnjnmlddbkjhnn"* ]]
 }
 
-@test "step force-installs but leaves extensions removable (normal_installed + update_url)" {
+@test "step auto-installs but leaves extensions removable (normal_installed + update_url)" {
   run shape policy
   [ "$status" -eq 0 ] || echo "$output"
   [ "$status" -eq 0 ]
@@ -52,7 +52,7 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "emptying the list clears the policy instead of leaving it force-installed" {
+@test "emptying the list clears the policy instead of leaving it auto-installed" {
   run shape clear
   [ "$status" -eq 0 ] || echo "$output"
   [ "$status" -eq 0 ]

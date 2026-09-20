@@ -71,8 +71,8 @@ def main():
 
     elif check == "clear":
         # Emptying chrome_extensions must converge: a task gated on the empty
-        # list has to delete the policy, or a removed extension keeps being
-        # force-installed forever.
+        # list has to delete the policy, or an extension dropped from config
+        # keeps being auto-installed forever.
         clearer = next(
             (t for t in tasks
              if "when" in t and re.search(r"length\s*(==\s*0|<\s*1)", t["when"])),
