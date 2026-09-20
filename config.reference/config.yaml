@@ -124,6 +124,12 @@ brew:
   - snyk/tap
   - steipete/tap
   - anomalyco/tap
+chrome_extensions:
+# Chrome extension IDs — the 32-char token in a Web Store URL
+# (chromewebstore.google.com/detail/<name>/<ID>). Auto-installed through
+# Chrome's ExtensionSettings policy (installation_mode: normal_installed),
+# so each one stays removable in chrome://extensions.
+- lmjdlojahmbbcodnpecnjnmlddbkjhnn   # Notifier for GitHub
 cursor_extensions:
 - anysphere.cursorpyright
 - anysphere.remote-ssh

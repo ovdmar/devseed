@@ -8,6 +8,8 @@ brew:
   - tree
   taps:
   - open-cli-collective/tap
+chrome_extensions:
+- lmjdlojahmbbcodnpecnjnmlddbkjhnn   # Notifier for GitHub
 cursor_extensions:
 - waderyan.gitblame
 defaults_restart:

@@ -1,0 +1,68 @@
+---
+# Chrome has no install CLI (unlike VS Code's --install-extension), so
+# extensions are declared through Chrome's ExtensionSettings enterprise
+# policy on the com.google.Chrome USER domain — no sudo. installation_mode
+# normal_installed auto-installs each extension on the next Chrome launch
+# while leaving it removable in chrome://extensions, and Chrome reads the
+# policy even before it is installed, so there is no "app absent, pending"
+# fallback the way the editor step has one.
+#
+# osx_defaults cannot write a nested dictionary, so the whole policy dict is
+# rendered here and written with `defaults`. The stored value is read before
+# and after the write and the task echoes the CHANGED sentinel only when it
+# actually moved (the no-op line must never contain that word, or
+# changed_when fires on every run), so a second apply settles at changed=0.
+#
+# Emptying chrome_extensions clears the policy — normal_installed auto-
+# installs every entry, so an extension left in the policy after it was
+# dropped from config would keep being auto-installed. devseed owns the
+# com.google.Chrome ExtensionSettings user-domain key.
+
+- name: Build the desired Chrome ExtensionSettings policy
+  ansible.builtin.set_fact:
+    devseed_chrome_ext_desired: >-
+      {{ devseed_chrome_ext_desired | default({}) | combine({item: entry}) }}
+  vars:
+    entry:
+      installation_mode: normal_installed
+      update_url: https://clients2.google.com/service/update2/crx
+  loop: "{{ devseed_chrome_extensions | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
+  when: (devseed_chrome_extensions | default([])) | length > 0
+
+- name: Write the Chrome ExtensionSettings policy
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      domain=com.google.Chrome
+      before="$(defaults read "$domain" ExtensionSettings 2>/dev/null || true)"
+      plist="$(printf '%s' {{ devseed_chrome_ext_desired | to_json | quote }} \
+               | plutil -convert xml1 -o - -)"
+      defaults write "$domain" ExtensionSettings "$plist"
+      after="$(defaults read "$domain" ExtensionSettings 2>/dev/null || true)"
+      if [ "$before" = "$after" ]; then
+        echo "chrome extension policy already matches"
+      else
+        echo "CHANGED chrome extension policy"
+      fi
+  register: devseed_chrome_ext_write
+  changed_when: "'CHANGED' in devseed_chrome_ext_write.stdout"
+  when: (devseed_chrome_extensions | default([])) | length > 0
+
+- name: Clear the Chrome ExtensionSettings policy when no extensions are declared
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      domain=com.google.Chrome
+      if defaults read "$domain" ExtensionSettings >/dev/null 2>&1; then
+        defaults delete "$domain" ExtensionSettings
+        echo "CHANGED cleared chrome extension policy"
+      else
+        echo "no chrome extension policy to clear"
+      fi
+  register: devseed_chrome_ext_clear
+  changed_when: "'CHANGED' in devseed_chrome_ext_clear.stdout"
+  when: (devseed_chrome_extensions | default([])) | length == 0
